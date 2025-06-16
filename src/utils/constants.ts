@@ -1,15 +1,23 @@
 import dotenv from "dotenv";
-import { Address } from "viem";
+import { Address, createPublicClient, http } from "viem";
+import { base } from "viem/chains";
 
 dotenv.config();
 
 // Endpoints
 export const QUICKNODE_RPC_URL = process.env.QUICKNODE_RPC || "";
-export const OPENOCEAN_ADDON_ID = "807"; // Example - replace with actual ID
+export const OPENOCEAN_ADDON_ID = "807";
 export const ENCRYPTION_KEY = process.env.WALLET_ENCRYPTION_KEY || "";
 
 // Base mainnet constants
 export const BASE_CHAIN_ID = "8453";
+
+export const client = createPublicClient({
+  chain: base,
+  transport: http(
+    "https://base-mainnet.g.alchemy.com/v2/" + process.env.ALCHEMY_API_KEY
+  ),
+});
 
 // Native token (ETH) address on Base
 export const NATIVE_TOKEN_ADDRESS =
@@ -42,7 +50,6 @@ export const CONFIRMATION_TIMEOUT = 60000; // 1 minute
 export const MAX_UINT256 =
   "115792089237316195423570985008687907853269984665640564039457584007913129639935";
 
-
 export const DB_PATH = process.env.DB_PATH || "./database.sqlite";
 
 // Database tables
@@ -52,4 +59,3 @@ export const DB_TABLES = {
   SETTINGS: "settings",
   TRANSACTIONS: "transactions",
 };
-

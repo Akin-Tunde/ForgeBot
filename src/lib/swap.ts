@@ -12,6 +12,7 @@ import {
   OPENOCEAN_ADDON_ID,
   BASE_CHAIN_ID,
   GAS_PRIORITY,
+  client,
 } from "../utils/constants";
 
 const ADDON_ID = OPENOCEAN_ADDON_ID;
@@ -204,7 +205,6 @@ export async function getGasParams(
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
 }> {
-  
   const gasPriceInfo = await getGasPriceForPriority(priority);
   // OpenOcean requires the gas price as a string and in gwei, not wei
   const price = gasPriceInfo.price.toString();
