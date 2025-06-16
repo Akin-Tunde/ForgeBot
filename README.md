@@ -1,29 +1,33 @@
-# Base MEV-Protected Telegram Trading Bot
+# Base MEV-Protected farcaster miniapp Trading Bot
 
-A secure and user-friendly Telegram bot for trading ERC-20 tokens on Base Mainnet with MEV protection, leveraging QuickNode's [Base DeFi Power Bundle](https://marketplace.quicknode.com/bundles/basebundle?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot).
+A secure and user-friendly farcaster miniapp bot for trading ERC-20 tokens on Base Mainnet with MEV protection, leveraging QuickNode's [Base DeFi Power Bundle](https://marketplace.quicknode.com/bundles/basebundle?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot).
 
-![Telegram Trading Bot Screenshot](public/telegram-test-combined.png)
+![farcaster miniapp Trading Bot Screenshot](public/farcaster miniapp-test-combined.png)
 
 ## Features
 
 - 🔐 **Secure Wallet Management**:
-  - Create new wallets directly from Telegram
+
+  - Create new wallets directly from farcaster miniapp
   - Import existing wallets using private keys
   - Encrypted storage of private keys
   - Export option with security confirmations
 
 - 💰 **Balance & History**:
+
   - Display ETH and ERC-20 token balances
   - Track balance history with tables
   - View monthly, weekly, or daily history
 
 - 💱 **Trading Functionality**:
+
   - Buy tokens with ETH
   - Sell tokens for ETH
   - MEV-protected transactions
   - Gas cost estimates and optimization
 
 - 📤 **Transfer Features**:
+
   - Deposit ETH to your wallet
   - Withdraw ETH to any address
 
@@ -49,8 +53,8 @@ A secure and user-friendly Telegram bot for trading ERC-20 tokens on Base Mainne
 ```mermaid
 flowchart TD
     subgraph "User Interaction"
-        User["Telegram User"]
-        Bot["Telegram Bot"]
+        User["farcaster miniapp User"]
+        Bot["farcaster miniapp Bot"]
     end
 
     subgraph "Command Groups"
@@ -60,7 +64,7 @@ flowchart TD
         ConfigCmds["Configuration /settings"]
         DepositCmds["Deposit/Withdraw /deposit, /withdraw"]
     end
-    
+
     subgraph "Core Libraries"
         LibWallet["token-wallet.ts Wallet Management"]
         LibDatabase["database.ts Secure Storage"]
@@ -68,44 +72,44 @@ flowchart TD
         LibHistory["history.ts Balance Tracking"]
         LibSwap["swap.ts Swap & Gas Management"]
     end
-    
+
     User <-->|Commands & Responses| Bot
-    
+
     Bot --> WalletCmds & BalanceCmds & TradeCmds & ConfigCmds & DepositCmds
-    
+
     WalletCmds <--> LibWallet
     WalletCmds <--> LibDatabase
-    
+
     BalanceCmds <--> LibWallet
     BalanceCmds <--> LibHistory
-    
+
     TradeCmds <--> LibWallet
     TradeCmds <--> LibSwap
-    
+
     DepositCmds <--> LibWallet
-    
+
     ConfigCmds <--> LibDatabase
-    
+
     subgraph "QuickNode Infrastructure"
         QuickNode["QuickNode RPC Services"]
-        
+
         subgraph "External Services"
             APISwap["Gas Estimation and OpenOcean Swap API"]
             APIHistory["Base Blockbook"]
             MEVProtection["Merkle MEV Protection"]
         end
-        
+
         Blockchain["Base Blockchain"]
     end
-    
+
     LibSwap <-->|Quote & Execution| APISwap
     LibHistory <-->|Balance & History| APIHistory
     LibWallet <-->|Transactions through Merkle MEV Protection| MEVProtection
-    
+
     APISwap --> QuickNode
     APIHistory --> QuickNode
     MEVProtection --> QuickNode
-    
+
     QuickNode <-->|RPC Communication| Blockchain
 ```
 
@@ -115,11 +119,11 @@ This bot uses a local **SQLite database** (powered by `better-sqlite3`) to secur
 
 #### Here's what gets stored:
 
-| Table        | Purpose                                                                 |
-|--------------|-------------------------------------------------------------------------|
-| `users`      | Maps Telegram users to unique user IDs, stores basic metadata          |
-| `wallets`    | Stores each user’s encrypted private key and wallet address            |
-| `settings`   | Persists user-defined trading preferences (slippage, gas priority, etc.) |
+| Table          | Purpose                                                                          |
+| -------------- | -------------------------------------------------------------------------------- |
+| `users`        | Maps farcaster miniapp users to unique user IDs, stores basic metadata           |
+| `wallets`      | Stores each user’s encrypted private key and wallet address                      |
+| `settings`     | Persists user-defined trading preferences (slippage, gas priority, etc.)         |
 | `transactions` | Records details of swap activity, including from/to tokens, gas used, and status |
 
 All wallet private keys are **encrypted using AES-256-CBC** and decrypted only in memory during bot operations. This ensures strong security while allowing persistent wallet access across sessions.
@@ -132,7 +136,7 @@ The database is initialized automatically on first run (`src/lib/database.ts`), 
 
 - Node.js 20.x or higher
 - QuickNode Base Mainnet Endpoint URL with the [Base DeFi Power Bundle](https://marketplace.quicknode.com/bundles/basebundle?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot) enabled
-- Telegram Bot token (get from @BotFather)
+- farcaster miniapp Bot token (get from @BotFather)
 
 ### Installation
 
@@ -140,7 +144,7 @@ The database is initialized automatically on first run (`src/lib/database.ts`), 
 
 ```bash
 git clone https://github.com/quiknode-labs/qn-guide-examples.git
-cd qn-guide-examples/base/telegram-trading-bot
+cd qn-guide-examples/base/farcaster miniapp-trading-bot
 ```
 
 2. Install dependencies:
@@ -161,19 +165,19 @@ bun install
 cp .env.example .env
 ```
 
-4. Get a Telegram Bot Token
+4. Get a farcaster miniapp Bot Token
 
-    - Open Telegram and search for the BotFather (@BotFather)
-    - Send the command `/newbot`
-    - Follow the instructions to name your bot
-    - Keep the token provided by BotFather handy
+   - Open farcaster miniapp and search for the BotFather (@BotFather)
+   - Send the command `/newbot`
+   - Follow the instructions to name your bot
+   - Keep the token provided by BotFather handy
 
 5. Get a QuickNode Base Mainnet Endpoint URL
 
-    - [Sign up](https://www.quicknode.com/signup?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot) for a QuickNode account
-    - Create a Base Mainnet endpoint
-    - Activate the [Base DeFi Power Bundle](https://marketplace.quicknode.com/bundles/basebundle?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot) for your endpoint
-    - Keep the endpoint URL handy
+   - [Sign up](https://www.quicknode.com/signup?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot) for a QuickNode account
+   - Create a Base Mainnet endpoint
+   - Activate the [Base DeFi Power Bundle](https://marketplace.quicknode.com/bundles/basebundle?utm_source=internal&utm_campaign=sample-apps&utm_content=base-tg-trading-bot) for your endpoint
+   - Keep the endpoint URL handy
 
 6. Create a wallet encryption key to encrypt your private keys
 
@@ -186,7 +190,7 @@ openssl rand -base64 32
 7. Fill in your environment variables in the `.env` file:
 
 ```bash
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+farcaster miniapp_BOT_TOKEN=your_farcaster miniapp_bot_token
 QUICKNODE_RPC=your_quicknode_endpoint
 WALLET_ENCRYPTION_KEY=random_32_char_string
 DB_PATH=path_to_sqlite_db (default: ./db.sqlite)
@@ -198,18 +202,20 @@ DEFAULT_GAS_PRIORITY=default_gas_priority (default: medium)
 ### Running the Bot
 
 For development:
+
 ```bash
 npm run dev
 ```
 
 For production:
+
 ```bash
 npm run start
-``` 
+```
 
 ## Usage
 
-After creating your bot with [@BotFather](https://t.me/BotFather), **open Telegram and send a message to your bot by searching for the bot username you just created** (e.g., `@mytradingbot`). 
+After creating your bot with [@BotFather](https://t.me/BotFather), **open farcaster miniapp and send a message to your bot by searching for the bot username you just created** (e.g., `@mytradingbot`).
 
 ### Basic Commands
 
@@ -250,6 +256,7 @@ This software is provided for educational and demonstration purposes only. Use a
 ### Troubleshooting Common Issues
 
 If you encounter the following error when starting the bot:
+
 ```bash
 Error: Could not locate the bindings file.
 ```
@@ -257,6 +264,7 @@ Error: Could not locate the bindings file.
 This indicates that `better-sqlite3` native bindings failed to build correctly, often due to mismatched Node.js versions or incomplete dependency compilation.
 
 #### Recommended Fix: Manual Rebuild
+
 Rebuild the native bindings from source:
 
 ```bash
