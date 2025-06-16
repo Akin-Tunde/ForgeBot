@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjIzOTM5NiwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDRENEU1MjIzODRkNkYxMDkwYkZENEM0NTI3YTdkNTJERmQyMGJDYTMifQ",
+    "payload": "eyJkb21haW4iOiJmb3JnZS1ib3QudmVyY2VsLmFwcCJ9",
+    "signature": "MHgxZDVlNTJhN2E1YTU0MDRhY2VlMWU5MDMwYzBhYzU0MGI5NzZkYTA3MDBiNjE1ZTRiNGQxZWY2NGM3OTAzMjI1NTg1NmZkNzVkZGMzYzRmZDJkYWUwYjgxNTZkM2U2NmZjMjNkYWQ1M2E4ZjcxMDZkNDIyMzZmZWIwN2E1MTM0ODFj"
+  },
+  "frame": {
+    "version": "1",
+    "name": "forge-bot",
+    "iconUrl": "https://forge-bot.vercel.app/icon.png",
+    "homeUrl": "https://forge-bot.vercel.app",
+    "imageUrl": "https://forge-bot.vercel.app/image.png",
+    "buttonTitle": "Start trading",
+    "splashImageUrl": "https://forge-bot.vercel.app/splash.png",
+    "splashBackgroundColor": "#eeccff",
+    "webhookUrl": "https://forge-bot.vercel.app/api/webhook"
+  }
+}

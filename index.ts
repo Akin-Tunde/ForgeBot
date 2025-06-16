@@ -5,10 +5,19 @@ import { initDatabase, closeDatabase } from "./src/lib/database";
 import { verifyEncryptionKey } from "./src/lib/encryption";
 
 // Import commands
-import {startHandler, helpHandler} from "./src/commands/start-help";
-import {walletHandler, createHandler} from "./src/commands/wallet";
-import {importHandler, exportHandler, handlePrivateKeyInput, handleExportConfirmation } from "./src/commands/import-export";
-import {balanceHandler, historyHandler, handleTimeframeChange} from "./src/commands/balance-history";
+import { startHandler, helpHandler } from "./src/commands/start-help";
+import { walletHandler, createHandler } from "./src/commands/wallet";
+import {
+  importHandler,
+  exportHandler,
+  handlePrivateKeyInput,
+  handleExportConfirmation,
+} from "./src/commands/import-export";
+import {
+  balanceHandler,
+  historyHandler,
+  handleTimeframeChange,
+} from "./src/commands/balance-history";
 import buyHandler, {
   handleTokenSelection,
   handleCustomTokenInput,
@@ -223,7 +232,6 @@ bot.on("callback_query:data", async (ctx) => {
     await updateGasPriority(ctx, priority);
   }
 
-
   // // History view callbacks
   // else if (
   //   callbackData === "history_table"
@@ -386,3 +394,5 @@ process.on("SIGINT", async () => {
 
 // Start the bot
 startBot();
+
+//url:https://forge-bot.vercel.app"

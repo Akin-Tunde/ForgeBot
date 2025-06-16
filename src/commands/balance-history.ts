@@ -1,4 +1,4 @@
-import { BotContext } from "../context";
+import { SessionData } from "../types/commands";
 import { getWallet, getEthBalance } from "../lib/token-wallet";
 import {
   getTokenBalance,
@@ -7,206 +7,162 @@ import {
 } from "../lib/history";
 import { getUniqueTokensByUserId } from "../lib/database";
 import { formatBalanceMessage } from "../utils/formatters";
-import { CommandHandler } from "../types/commands";
 import { TokenInfo } from "../types/config";
-import { InlineKeyboard } from "grammy";
+import { WalletData } from "../types/wallet";
 
-// Handler for balance command
-export const balanceHandler: CommandHandler = {
+interface CommandContext {
+  session: SessionData;
+  wallet?: WalletData; // Fix: Use WalletData
+}
+
+export const balanceHandler = {
   command: "balance",
   description: "Show current ETH + filtered ERC-20 balances",
-  handler: async (ctx: BotContext) => {
+  handler: async ({ session, wallet }: CommandContext) => {
     try {
-      const userId = ctx.session.userId;
-
+      const userId = session.userId;
       if (!userId) {
-        await ctx.reply("❌ Please start the bot first with /start command.");
-        return;
+        return {
+          response: "❌ Please start the bot first with /start command.",
+        };
       }
-
-      // Get user's wallet
-      const wallet = await getWallet(userId);
 
       if (!wallet) {
-        await ctx.reply(
-          "❌ You don't have a wallet yet.\n\n" +
-            "Use /create to create a new wallet or /import to import an existing one."
-        );
-        return;
+        return {
+          response:
+            "❌ You don't have a wallet yet.\n\nUse /create to create a new wallet or /import to import an existing one.",
+        };
       }
 
-      await ctx.reply("⏳ Fetching your balances...");
-
-      // Get ETH balance
-      const ethBalance = await getEthBalance(wallet.address);
-
-      // Get token balances from Blockbook API
+      const ethBalance = await getEthBalance(wallet.address as `0x${string}`);
       const tokenData = await getTokenBalance(wallet.address);
-
-      // Get list of tokens this user has interacted with
       const interactedTokens = getUniqueTokensByUserId(userId).map((t) =>
         t.toLowerCase()
       );
-
-      // Extract relevant token info
       const tokens: TokenInfo[] = [];
 
-      if (tokenData && tokenData.tokens && Array.isArray(tokenData.tokens)) {
+      if (tokenData?.tokens) {
         for (const token of tokenData.tokens) {
-          // Only include tokens with non-zero balance and that the user has interacted with
-          if (token.type === "ERC20") {
-            if (
-              BigInt(token.balance) > BigInt(0) &&
-              interactedTokens.includes(token.contract.toLowerCase())
-            ) {
-              tokens.push({
-                address: token.contract,
-                symbol: token.symbol,
-                decimals: token.decimals,
-                balance: token.balance,
-              });
-            }
+          if (
+            token.type === "ERC20" &&
+            BigInt(token.balance) > 0 &&
+            interactedTokens.includes(token.contract.toLowerCase())
+          ) {
+            tokens.push({
+              address: token.contract,
+              symbol: token.symbol,
+              decimals: token.decimals,
+              balance: token.balance,
+            });
           }
         }
       }
 
-      // Create actions keyboard
-      const keyboard = new InlineKeyboard()
-        .text("📈 View History", "check_history")
-        .text("📥 Deposit", "deposit")
-        .row()
-        .text("💱 Buy Token", "buy_token")
-        .text("💱 Sell Token", "sell_token")
-        .row()
-        .text("📤 Withdraw", "withdraw");
+      const buttons = [
+        [
+          { label: "📈 View History", callback: "/history" },
+          { label: "📥 Deposit", callback: "/deposit" },
+        ],
+        [
+          { label: "💱 Buy Token", callback: "/buy" },
+          { label: "💱 Sell Token", callback: "/sell" },
+        ],
+        [{ label: "📤 Withdraw", callback: "/withdraw" }],
+      ];
 
-      // Format and send balance message
-      const message = formatBalanceMessage(ethBalance, tokens);
-
-      await ctx.reply(message, {
-        parse_mode: "Markdown",
-        reply_markup: keyboard,
-      });
+      return {
+        response: formatBalanceMessage(ethBalance, tokens).replace(/`/g, ""),
+        buttons,
+      };
     } catch (error) {
       console.error("Error in balance command:", error);
-      await ctx.reply(
-        "❌ An error occurred while fetching your balances. Please try again later."
-      );
+      return {
+        response:
+          "❌ An error occurred while fetching your balances. Please try again later.",
+      };
     }
   },
 };
 
-// Handler for balance history
-export const historyHandler: CommandHandler = {
+export const historyHandler = {
   command: "history",
   description: "Display 1-month balance history as a table",
-  handler: async (ctx: BotContext) => {
+  handler: async ({ session, wallet }: CommandContext) => {
     try {
-      const userId = ctx.session.userId;
-
+      const userId = session.userId;
       if (!userId) {
-        await ctx.reply("❌ Please start the bot first with /start command.");
-        return;
+        return {
+          response: "❌ Please start the bot first with /start command.",
+        };
       }
-
-      const wallet = await getWallet(userId);
 
       if (!wallet) {
-        await ctx.reply(
-          "❌ You don't have a wallet yet.\n\n" +
-            "Use /create to create a new wallet or /import to import an existing one."
-        );
-        return;
+        return {
+          response:
+            "❌ You don't have a wallet yet.\n\nUse /create to create a new wallet or /import to import an existing one.",
+        };
       }
-
-      await ctx.reply("⏳ Fetching your balance history...");
 
       const history = await getBalanceHistory(wallet.address, "month");
-
       if (history.length === 0) {
-        await ctx.reply(
-          "📊 *No Balance History*\n\n" +
-            "There is no balance history available for your wallet yet.\n\n" +
-            "This could be because:\n" +
-            "- Your wallet is new\n" +
-            "- You haven't had any transactions\n" +
-            "- The history data is still being indexed\n\n" +
-            "Check back later after making some transactions.",
-          { parse_mode: "Markdown" }
-        );
-        return;
+        return {
+          response:
+            "📊 No Balance History\n\nThere is no balance history available for your wallet yet.\n\nThis could be because:\n- Your wallet is new\n- You haven't had any transactions\n- The history data is still being indexed\n\nCheck back later after making some transactions.",
+        };
       }
 
-      // Store history in session for future timeframe switching
-      ctx.session.tempData = {
-        history,
-        timeframe: "month",
+      session.tempData = { history, timeframe: "month" };
+      const buttons = [
+        [
+          { label: "📆 Day", callback: "history_day" },
+          { label: "📆 Week", callback: "history_week" },
+          { label: "📆 Month", callback: "history_month" },
+        ],
+      ];
+
+      return {
+        response: formatBalanceHistoryTable(history).replace(/`/g, ""),
+        buttons,
       };
-
-      // Create keyboard with timeframe options only
-      const keyboard = new InlineKeyboard()
-        .text("📆 Day", "history_day")
-        .text("📆 Week", "history_week")
-        .text("📆 Month", "history_month");
-
-      const table = formatBalanceHistoryTable(history);
-
-      await ctx.reply(table, {
-        parse_mode: "Markdown",
-        reply_markup: keyboard,
-      });
     } catch (error) {
       console.error("Error in history command:", error);
-      await ctx.reply(
-        "❌ An error occurred while fetching your balance history. Please try again later."
-      );
+      return {
+        response:
+          "❌ An error occurred while fetching your balance history. Please try again later.",
+      };
     }
   },
 };
 
-// Handle timeframe change only (no view switch anymore)
 export async function handleTimeframeChange(
-  ctx: BotContext,
+  session: SessionData,
+  wallet: { address: string },
   timeframe: "day" | "week" | "month"
-): Promise<void> {
+): Promise<{
+  response: string;
+  buttons?: { label: string; callback: string }[][];
+}> {
   try {
-    const userId = ctx.session.userId;
-    const wallet = await getWallet(userId!);
-
-    if (!wallet) {
-      await ctx.answerCallbackQuery("Wallet not found");
-      return;
-    }
-
-    await ctx.answerCallbackQuery(`Fetching ${timeframe} history...`);
-
     const history = await getBalanceHistory(wallet.address, timeframe);
-
     if (history.length === 0) {
-      await ctx.answerCallbackQuery(
-        "No history data available for this timeframe"
-      );
-      return;
+      return { response: "No history data available for this timeframe." };
     }
 
-    ctx.session.tempData = {
-      history,
-      timeframe,
+    session.tempData = { history, timeframe };
+    const buttons = [
+      [
+        { label: "📆 Day", callback: "history_day" },
+        { label: "📆 Week", callback: "history_week" },
+        { label: "📆 Month", callback: "history_month" },
+      ],
+    ];
+
+    return {
+      response: formatBalanceHistoryTable(history).replace(/`/g, ""),
+      buttons,
     };
-
-    const keyboard = new InlineKeyboard()
-      .text("📆 Day", "history_day")
-      .text("📆 Week", "history_week")
-      .text("📆 Month", "history_month");
-
-    const message = formatBalanceHistoryTable(history);
-
-    await ctx.editMessageText(message, {
-      parse_mode: "Markdown",
-      reply_markup: keyboard,
-    });
   } catch (error) {
     console.error("Error handling timeframe change:", error);
-    await ctx.answerCallbackQuery("An error occurred. Please try again.");
+    return { response: "An error occurred. Please try again." };
   }
 }

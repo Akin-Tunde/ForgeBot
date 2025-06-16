@@ -1,5 +1,5 @@
-import { Context } from "grammy";
 import { UserSettings } from "./config";
+import { WalletData } from "./wallet";
 
 export interface SessionData {
   userId?: string;
@@ -9,23 +9,21 @@ export interface SessionData {
   settings?: UserSettings;
 }
 
-export interface BotContext extends Context {
+export interface CommandContext {
   session: SessionData;
+  wallet?: WalletData;
+  args?: string; // Single string for input (e.g., private key, amount)
 }
 
 export interface CommandHandler {
   command: string;
   description: string;
-  handler: (ctx: BotContext) => Promise<void>;
-}
-
-export interface StepHandler {
-  handler: (ctx: BotContext) => Promise<void>;
-  next?: string;
-}
-
-export interface ConversationState {
-  [key: string]: any;
+  handler: (
+    ctx: CommandContext
+  ) => Promise<{
+    response: string;
+    buttons?: { label: string; callback: string }[][];
+  }>;
 }
 
 export type SettingsOption = "slippage" | "gasPriority";

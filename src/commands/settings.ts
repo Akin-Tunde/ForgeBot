@@ -1,232 +1,207 @@
-import { BotContext } from "../context";
+import { CommandContext } from "../types/commands";
 import { getUserSettings, saveUserSettings } from "../lib/database";
-import { CommandHandler } from "../types/commands";
-import {
-  createSettingsKeyboard,
-  createSlippageKeyboard,
-  createGasPriorityKeyboard,
-} from "../utils/keyboardHelper";
-import { UserSettings } from "../types/config";
 import { SettingsOption } from "../types/commands";
 import { isValidGasPriority, isValidSlippage } from "../utils/validators";
 import { getGasPriorityLabel } from "../lib/swap";
 
-const settingsHandler: CommandHandler = {
+export const settingsHandler = {
   command: "settings",
-  description: "Change slippage or gas priority,",
-  handler: async (ctx: BotContext) => {
+  description: "Change slippage or gas priority",
+  handler: async ({ session }: CommandContext) => {
     try {
-      const userId = ctx.session.userId;
-
+      const userId = session.userId;
       if (!userId) {
-        await ctx.reply("❌ Please start the bot first with /start command.");
-        return;
+        return {
+          response: "❌ Please start the bot first with /start command.",
+        };
       }
 
-      // Get user settings
-      let settings = ctx.session.settings;
-
+      let settings = session.settings;
       if (!settings) {
         settings = getUserSettings(userId) || undefined;
-
         if (settings) {
-          ctx.session.settings = settings;
+          session.settings = settings;
         } else {
-          // Create default settings
           settings = {
             userId,
             slippage: 1.0,
             gasPriority: "medium",
           };
-
           saveUserSettings(userId, {
             slippage: settings.slippage,
             gasPriority: settings.gasPriority,
           });
-
-          ctx.session.settings = settings;
+          session.settings = settings;
         }
       }
 
-      await displaySettings(ctx, settings);
+      return {
+        response: `⚙️ Your Settings\n\nSlippage Tolerance: ${
+          settings.slippage
+        }%\nGas Priority: ${getGasPriorityLabel(
+          settings.gasPriority
+        )}\n\nSelect an option to modify:`,
+        buttons: [
+          [
+            { label: "Slippage", callback: "settings_slippage" },
+            { label: "Gas Priority", callback: "settings_gasPriority" },
+          ],
+        ],
+      };
     } catch (error) {
       console.error("Error in settings command:", error);
-      await ctx.reply("❌ An error occurred. Please try again later.");
+      return { response: "❌ An error occurred. Please try again later." };
     }
   },
 };
 
-// Display current settings
-async function displaySettings(
-  ctx: BotContext,
-  settings: UserSettings
-): Promise<void> {
-  try {
-    await ctx.reply(
-      `⚙️ *Your Settings*\n\n` +
-        `*Slippage Tolerance*: ${settings.slippage}%\n` +
-        `*Gas Priority*: ${getGasPriorityLabel(settings.gasPriority)}\n` +
-        `Select an option to modify:`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: createSettingsKeyboard(),
-      }
-    );
-  } catch (error) {
-    console.error("Error displaying settings:", error);
-    await ctx.reply("❌ An error occurred. Please try again later.");
-  }
-}
-
-// Handle settings option selection
 export async function handleSettingsOption(
-  ctx: BotContext,
+  { session }: CommandContext,
   option: SettingsOption
-): Promise<void> {
+): Promise<{
+  response: string;
+  buttons?: { label: string; callback: string }[][];
+}> {
   try {
-    const userId = ctx.session.userId;
-
+    const userId = session.userId;
     if (!userId) {
-      await ctx.answerCallbackQuery(
-        "Session expired. Please use /start to begin again."
-      );
-      return;
+      return {
+        response: "❌ Session expired. Please use /start to begin again.",
+      };
     }
 
-    // Set current action
-    ctx.session.currentAction = `settings_${option}`;
+    session.currentAction = `settings_${option}`;
 
     switch (option) {
       case "slippage":
-        await ctx.editMessageText(
-          `🔄 *Slippage Tolerance Setting*\n\n` +
-            `Slippage tolerance is the maximum price difference you're willing to accept for a trade.\n\n` +
-            `Current setting: ${ctx.session.settings?.slippage}%\n\n` +
-            `Select a new slippage tolerance:`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: createSlippageKeyboard(),
-          }
-        );
-        break;
-
+        return {
+          response: `🔄 Slippage Tolerance Setting\n\nSlippage tolerance is the maximum price difference you're willing to accept for a trade.\n\nCurrent setting: ${session.settings?.slippage}%\n\nSelect a new slippage tolerance:`,
+          buttons: [
+            [
+              { label: "0.5%", callback: "slippage_0.5" },
+              { label: "1.0%", callback: "slippage_1.0" },
+              { label: "2.0%", callback: "slippage_2.0" },
+            ],
+          ],
+        };
       case "gasPriority":
-        await ctx.editMessageText(
-          `⛽ *Gas Priority Setting*\n\n` +
-            `Gas priority determines how quickly your transactions are likely to be processed.\n\n` +
-            `Current setting: ${getGasPriorityLabel(
-              ctx.session.settings?.gasPriority || "medium"
-            )}\n\n` +
-            `Select a new gas priority:`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: createGasPriorityKeyboard(),
-          }
-        );
-        break;
-
+        return {
+          response: `⛽ Gas Priority Setting\n\nGas priority determines how quickly your transactions are likely to be processed.\n\nCurrent setting: ${getGasPriorityLabel(
+            session.settings?.gasPriority || "medium"
+          )}\n\nSelect a new gas priority:`,
+          buttons: [
+            [
+              { label: "Low", callback: "gasPriority_low" },
+              { label: "Medium", callback: "gasPriority_medium" },
+              { label: "High", callback: "gasPriority_high" },
+            ],
+          ],
+        };
       default:
-        await ctx.answerCallbackQuery("Unknown setting option");
-        break;
+        return { response: "❌ Unknown setting option." };
     }
   } catch (error) {
     console.error("Error handling settings option:", error);
-    await ctx.answerCallbackQuery("An error occurred. Please try again.");
+    return { response: "❌ An error occurred. Please try again." };
   }
 }
 
-// Update slippage setting
 export async function updateSlippage(
-  ctx: BotContext,
+  { session }: CommandContext,
   value: number
-): Promise<void> {
+): Promise<{
+  response: string;
+  buttons?: { label: string; callback: string }[][];
+}> {
   try {
-    const userId = ctx.session.userId;
-
+    const userId = session.userId;
     if (!userId) {
-      await ctx.answerCallbackQuery("Session expired");
-      return;
+      return { response: "❌ Session expired." };
     }
 
     if (!isValidSlippage(value)) {
-      await ctx.answerCallbackQuery("Invalid slippage value");
-      return;
+      return { response: "❌ Invalid slippage value." };
     }
 
-    // Update settings
-    const settings = ctx.session.settings || {
+    const settings = session.settings || {
       userId,
       slippage: 1.0,
       gasPriority: "medium",
     };
 
     settings.slippage = value;
-    ctx.session.settings = settings;
+    session.settings = settings;
 
-    // Save to database
     saveUserSettings(userId, {
       slippage: settings.slippage,
       gasPriority: settings.gasPriority,
     });
 
-    await ctx.answerCallbackQuery(`Slippage set to ${value}%`);
-
-    // Reset current action
-    ctx.session.currentAction = undefined;
-
-    // Show updated settings
-    await displaySettings(ctx, settings);
+    return {
+      response: `⚙️ Your Settings\n\nSlippage set to ${value}%.\n\nSlippage Tolerance: ${
+        settings.slippage
+      }%\nGas Priority: ${getGasPriorityLabel(
+        settings.gasPriority
+      )}\n\nSelect an option to modify:`,
+      buttons: [
+        [
+          { label: "Slippage", callback: "settings_slippage" },
+          { label: "Gas Priority", callback: "settings_gasPriority" },
+        ],
+      ],
+    };
   } catch (error) {
     console.error("Error updating slippage:", error);
-    await ctx.answerCallbackQuery("An error occurred");
+    return { response: "❌ An error occurred." };
   }
 }
 
-// Update gas priority setting
 export async function updateGasPriority(
-  ctx: BotContext,
+  { session }: CommandContext,
   priority: "low" | "medium" | "high"
-): Promise<void> {
+): Promise<{
+  response: string;
+  buttons?: { label: string; callback: string }[][];
+}> {
   try {
-    const userId = ctx.session.userId;
-
+    const userId = session.userId;
     if (!userId) {
-      await ctx.answerCallbackQuery("Session expired");
-      return;
+      return { response: "❌ Session expired." };
     }
 
     if (!isValidGasPriority(priority)) {
-      await ctx.answerCallbackQuery("Invalid gas priority");
-      return;
+      return { response: "❌ Invalid gas priority." };
     }
 
-    // Update settings
-    const settings = ctx.session.settings || {
+    const settings = session.settings || {
       userId,
       slippage: 1.0,
       gasPriority: "medium",
     };
 
     settings.gasPriority = priority;
-    ctx.session.settings = settings;
+    session.settings = settings;
 
-    // Save to database
     saveUserSettings(userId, {
       slippage: settings.slippage,
       gasPriority: settings.gasPriority,
     });
 
-    await ctx.answerCallbackQuery(`Gas priority set to ${priority}`);
-
-    // Reset current action
-    ctx.session.currentAction = undefined;
-
-    // Show updated settings
-    await displaySettings(ctx, settings);
+    return {
+      response: `⚙️ Your Settings\n\nGas priority set to ${priority}.\n\nSlippage Tolerance: ${
+        settings.slippage
+      }%\nGas Priority: ${getGasPriorityLabel(
+        settings.gasPriority
+      )}\n\nSelect an option to modify:`,
+      buttons: [
+        [
+          { label: "Slippage", callback: "settings_slippage" },
+          { label: "Gas Priority", callback: "settings_gasPriority" },
+        ],
+      ],
+    };
   } catch (error) {
     console.error("Error updating gas priority:", error);
-    await ctx.answerCallbackQuery("An error occurred");
+    return { response: "❌ An error occurred." };
   }
 }
-
-export default settingsHandler;
