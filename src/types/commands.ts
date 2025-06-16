@@ -7,6 +7,7 @@ export interface SessionData {
   currentAction?: string;
   tempData?: Record<string, any>;
   settings?: UserSettings;
+  fid?: string; // Farcaster ID, store as string
 }
 
 export interface CommandContext {
@@ -18,9 +19,7 @@ export interface CommandContext {
 export interface CommandHandler {
   command: string;
   description: string;
-  handler: (
-    ctx: CommandContext
-  ) => Promise<{
+  handler: (ctx: CommandContext) => Promise<{
     response: string;
     buttons?: { label: string; callback: string }[][];
   }>;

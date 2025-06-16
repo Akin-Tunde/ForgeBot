@@ -1,4 +1,4 @@
-import { SessionData } from "../types/commands";
+import { CommandContext } from "../types/commands";
 import {
   getTokenInfo,
   getTokenAddressFromSymbol,
@@ -16,11 +16,6 @@ import { saveTransaction } from "../lib/database";
 import { NATIVE_TOKEN_ADDRESS } from "../utils/constants";
 import { parseEther, formatUnits, Address } from "viem";
 import { WalletData } from "../types/wallet";
-
-interface CommandContext {
-  session: SessionData;
-  wallet?: WalletData; // Fix: Use WalletData
-}
 
 export const buyHandler = {
   command: "buy",
@@ -84,13 +79,11 @@ export const buyHandler = {
   },
 };
 
-export async function handleTokenSelection(
-  { session, wallet }: CommandContext,
-  tokenSymbol: string
-): Promise<{
+export async function handleTokenSelection(context: CommandContext): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, args: tokenSymbol } = context;
   try {
     if (tokenSymbol === "custom") {
       session.currentAction = "buy_custom_token";
@@ -103,7 +96,7 @@ export async function handleTokenSelection(
       };
     }
 
-    const tokenAddress = getTokenAddressFromSymbol(tokenSymbol);
+    const tokenAddress = getTokenAddressFromSymbol(tokenSymbol!);
     if (!tokenAddress) {
       return { response: "❌ Token symbol not recognized." };
     }
@@ -136,13 +129,11 @@ export async function handleTokenSelection(
   }
 }
 
-export async function handleCustomTokenInput(
-  { session, wallet }: CommandContext,
-  input: string
-): Promise<{
+export async function handleCustomTokenInput(context: CommandContext): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, args: input } = context;
   try {
     const userId = session.userId;
     if (!userId || !input) {
@@ -185,13 +176,11 @@ export async function handleCustomTokenInput(
   }
 }
 
-export async function handleBuyAmountInput(
-  { session, wallet }: CommandContext,
-  input: string
-): Promise<{
+export async function handleBuyAmountInput(context: CommandContext): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, args: input } = context;
   try {
     const userId = session.userId;
     if (!userId || !input) {
@@ -205,7 +194,7 @@ export async function handleBuyAmountInput(
       };
     }
 
-    let amountInput = input;
+    let amountInput = input!;
     if (amountInput.startsWith(".")) {
       amountInput = "0" + amountInput;
     }
@@ -276,12 +265,13 @@ export async function handleBuyAmountInput(
 }
 
 export async function handleBuyConfirmation(
-  { session, wallet }: CommandContext,
+  context: CommandContext,
   confirmed: boolean
 ): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, wallet } = context;
   try {
     if (!confirmed) {
       session.currentAction = undefined;

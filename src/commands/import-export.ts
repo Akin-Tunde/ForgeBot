@@ -1,17 +1,11 @@
-import { SessionData } from "../types/commands";
+import { CommandContext } from "../types/commands";
 import { importWallet, getWallet, getPrivateKey } from "../lib/token-wallet";
 import { isValidPrivateKey } from "../utils/validators";
-import { WalletData } from "../types/wallet";
-
-interface ImportExportCommandContext {
-  session: SessionData;
-  wallet?: WalletData;
-}
 
 export const importHandler = {
   command: "import",
   description: "Import wallet via private key",
-  handler: async ({ session, wallet }: ImportExportCommandContext) => {
+  handler: async ({ session, wallet }: CommandContext) => {
     try {
       const userId = session.userId;
       if (!userId) {
@@ -52,13 +46,11 @@ export const importHandler = {
   },
 };
 
-export async function handlePrivateKeyInput(
-  { session, wallet }: ImportExportCommandContext,
-  input: string
-): Promise<{
+export async function handlePrivateKeyInput(context: CommandContext): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, args: input } = context;
   try {
     const userId = session.userId;
     if (!userId || !input) {
@@ -94,7 +86,7 @@ export async function handlePrivateKeyInput(
 export const exportHandler = {
   command: "export",
   description: "Display private key (with confirmation prompt)",
-  handler: async ({ session, wallet }: ImportExportCommandContext) => {
+  handler: async ({ session, wallet }: CommandContext) => {
     try {
       const userId = session.userId;
       if (!userId) {
@@ -130,12 +122,13 @@ export const exportHandler = {
 };
 
 export async function handleExportConfirmation(
-  { session, wallet }: ImportExportCommandContext,
-  confirmed: boolean
+  context: CommandContext,
+  confirmed: boolean // confirmed is specific to this handler, not from general args
 ): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, wallet } = context;
   try {
     if (!confirmed) {
       session.currentAction = undefined;
@@ -156,6 +149,11 @@ export async function handleExportConfirmation(
         response:
           "❌ Wallet not found. Please create or import a wallet first.",
       };
+    }
+
+    if (!wallet) {
+      // Double check, though context should provide it if exportHandler was called
+      return { response: "❌ Wallet not found for export." };
     }
 
     const privateKey = getPrivateKey(wallet);

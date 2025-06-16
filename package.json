@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@farcaster/auth-client": "^0.7.0",
     "@farcaster/core": "^0.17.1",
     "@farcaster/frame-sdk": "^0.0.63",
     "@farcaster/quick-auth": "^0.0.6",

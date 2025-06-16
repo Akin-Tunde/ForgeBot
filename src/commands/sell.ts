@@ -1,5 +1,5 @@
 import { SessionData, CommandContext } from "../types/commands";
-import { WalletData, TransactionParams } from "../types/wallet";
+import { TransactionParams } from "../types/wallet";
 import {
   getTokenInfo,
   getTokenAllowance,
@@ -103,12 +103,12 @@ export const sellHandler = {
 };
 
 export async function handleSellTokenSelection(
-  { session, wallet }: CommandContext,
-  tokenAddress: string
+  context: CommandContext
 ): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, args: tokenAddress } = context;
   try {
     if (tokenAddress === "custom") {
       session.currentAction = "sell_custom_token";
@@ -118,7 +118,7 @@ export async function handleSellTokenSelection(
       };
     }
 
-    const tokenInfo = await getTokenInfo(tokenAddress as Address);
+    const tokenInfo = await getTokenInfo(tokenAddress! as Address);
     if (!tokenInfo) {
       return {
         response: "❌ Unable to get token information. Please try again.",
@@ -126,7 +126,7 @@ export async function handleSellTokenSelection(
     }
 
     const token = session.tempData!.tokens.find(
-      (t: any) => t.contract.toLowerCase() === tokenAddress.toLowerCase()
+      (t: any) => t.contract.toLowerCase() === tokenAddress!.toLowerCase()
     );
 
     if (!token || BigInt(token.balance) <= BigInt(0)) {
@@ -154,12 +154,12 @@ export async function handleSellTokenSelection(
 }
 
 export async function handleSellCustomTokenInput(
-  { session, wallet }: CommandContext,
-  input: string
+  context: CommandContext
 ): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, args: input } = context;
   try {
     const userId = session.userId;
     if (!userId || !input) {
@@ -211,13 +211,11 @@ export async function handleSellCustomTokenInput(
   }
 }
 
-export async function handleSellAmountInput(
-  { session, wallet }: CommandContext,
-  input: string
-): Promise<{
+export async function handleSellAmountInput(context: CommandContext): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, wallet, args: input } = context;
   try {
     const userId = session.userId;
     if (!userId || !input) {
@@ -225,7 +223,7 @@ export async function handleSellAmountInput(
     }
 
     const { fromSymbol, fromDecimals, tokenBalance } = session.tempData!;
-    let amountInput = input;
+    let amountInput = input!;
 
     if (amountInput.toLowerCase() === "max") {
       return await handleSellAmountLogic({ session, wallet }, tokenBalance);
@@ -334,12 +332,13 @@ async function handleSellAmountLogic(
 }
 
 export async function handleSellConfirmation(
-  { session, wallet }: CommandContext,
+  context: CommandContext,
   confirmed: boolean
 ): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, wallet } = context;
   try {
     if (!confirmed) {
       session.currentAction = undefined;

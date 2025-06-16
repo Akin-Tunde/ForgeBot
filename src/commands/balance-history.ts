@@ -1,4 +1,4 @@
-import { SessionData } from "../types/commands";
+import { CommandContext } from "../types/commands";
 import { getWallet, getEthBalance } from "../lib/token-wallet";
 import {
   getTokenBalance,
@@ -8,12 +8,6 @@ import {
 import { getUniqueTokensByUserId } from "../lib/database";
 import { formatBalanceMessage } from "../utils/formatters";
 import { TokenInfo } from "../types/config";
-import { WalletData } from "../types/wallet";
-
-interface CommandContext {
-  session: SessionData;
-  wallet?: WalletData; // Fix: Use WalletData
-}
 
 export const balanceHandler = {
   command: "balance",
@@ -134,15 +128,16 @@ export const historyHandler = {
   },
 };
 
-export async function handleTimeframeChange(
-  session: SessionData,
-  wallet: { address: string },
-  timeframe: "day" | "week" | "month"
-): Promise<{
+export async function handleTimeframeChange(context: CommandContext): Promise<{
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
+  const { session, wallet, args } = context;
+  const timeframe = args as "day" | "week" | "month";
   try {
+    if (!wallet || !timeframe) {
+      return { response: "❌ Invalid request for timeframe change." };
+    }
     const history = await getBalanceHistory(wallet.address, timeframe);
     if (history.length === 0) {
       return { response: "No history data available for this timeframe." };
