@@ -1,6 +1,10 @@
+// src/commands/import-export.ts
+
+// src/commands/import-export.ts (unchanged)
 import { CommandContext } from "../types/commands";
 import { importWallet, getWallet, getPrivateKey } from "../lib/token-wallet";
 import { isValidPrivateKey } from "../utils/validators";
+import { startHandler } from "./start-help";
 
 export const importHandler = {
   command: "import",
@@ -68,10 +72,10 @@ export async function handlePrivateKeyInput(context: CommandContext): Promise<{
     session.walletAddress = newWallet.address;
     session.currentAction = undefined;
 
-    const buttons = [[{ label: "💰 Check Balance", callback: "/balance" }]];
+    const startResult = await startHandler.handler({ session });
     return {
-      response: `✅ Wallet imported successfully!\n\nAddress: ${newWallet.address}\n\nNow you can:\n- Use /deposit to receive funds\n- Use /balance to check your balance\n- Use /buy to buy tokens with ETH`,
-      buttons,
+      response: `✅ Wallet imported successfully!\n\nAddress: ${newWallet.address}\n\nImportant:\n- This wallet is stored securely on our server\n- Use /export to get your private key\n- Store your private key somewhere safe\n- Never share your private key with anyone\n\n${startResult.response}`,
+      buttons: startResult.buttons,
     };
   } catch (error) {
     console.error("Error handling private key input:", error);
@@ -82,6 +86,8 @@ export async function handlePrivateKeyInput(context: CommandContext): Promise<{
     };
   }
 }
+
+// ... exportHandler and handleExportConfirmation unchanged
 
 export const exportHandler = {
   command: "export",

@@ -1,13 +1,16 @@
-import { CommandContext } from "../types/commands";
+// src/handlers/wallet.ts
+import { CommandContext, CommandHandler } from "../types/commands";
 import { getWallet, generateWallet } from "../lib/token-wallet";
 import { verifyEncryptionKey } from "../lib/encryption";
+import { startHandler } from "./start-help"; // Adjust path if needed
 
-export const walletHandler = {
+export const walletHandler: CommandHandler = {
   command: "wallet",
   description: "Show wallet address and type",
-  handler: async ({ session }: CommandContext) => {
+  handler: async (ctx?: CommandContext) => {
     try {
-      const userId = session.userId;
+      const session = ctx?.session;
+      const userId = session?.userId;
       if (!userId) {
         return {
           response: "❌ Please start the bot first with /start command.",
@@ -52,12 +55,13 @@ export const walletHandler = {
   },
 };
 
-export const createHandler = {
+export const createHandler: CommandHandler = {
   command: "create",
   description: "Create and save a new wallet",
-  handler: async ({ session }: CommandContext) => {
+  handler: async (ctx?: CommandContext) => {
     try {
-      const userId = session.userId;
+      const session = ctx?.session;
+      const userId = session?.userId;
       if (!userId) {
         return {
           response: "❌ Please start the bot first with /start command.",
@@ -71,7 +75,7 @@ export const createHandler = {
         };
       }
 
-      const existingWallet = session.walletAddress;
+      const existingWallet = session?.walletAddress;
       if (existingWallet) {
         return {
           response:
@@ -94,9 +98,11 @@ export const createHandler = {
       const wallet = await generateWallet(userId);
       session.walletAddress = wallet.address;
 
+      // Trigger startHandler to show full buttons
+      const startResult = await startHandler.handler({ session });
       return {
-        response: `✅ Wallet created successfully!\n\nAddress: ${wallet.address}\n\nImportant:\n- This wallet is stored securely on our server\n- Use /export to get your private key\n- Store your private key somewhere safe\n- Never share your private key with anyone\n\nNow you can:\n- Use /deposit to receive funds\n- Use /balance to check your balance\n- Use /buy to buy tokens with ETH`,
-        buttons: [[{ label: "🔑 Export Private Key", callback: "export_key" }]],
+        response: `✅ Wallet created successfully!\n\nAddress: ${wallet.address}\n\nImportant:\n- This wallet is stored securely on our server\n- Use /export to get your private key\n- Store your private key somewhere safe\n- Never share your private key with anyone\n\n${startResult.response}`,
+        buttons: startResult.buttons,
       };
     } catch (error) {
       console.error("Error in create command:", error);

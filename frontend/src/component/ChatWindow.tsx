@@ -1,3 +1,4 @@
+// src/components/ChatWindow.tsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import CommandButtons from "./CommandButtons";
@@ -34,8 +35,8 @@ function ChatWindow() {
         const context = await sdk.context;
         console.log("Farcaster context.user:", context.user);
         const fid = context.user.fid;
-        const displayName = context.user.displayName || 'User';
-        const username = context.user.username || 'player';
+        const displayName = context.user.displayName || "User";
+        const username = context.user.username || "player";
         setUserFid(fid);
         setUsername(username);
         setDisplayName(displayName);
@@ -80,7 +81,7 @@ function ChatWindow() {
     }
   }, []);
 
-  const sendCommand = async (command: string) => {
+  const sendCommand = async (command: string, args?: string) => {
     const fid = sessionStorage.getItem("fid");
     const username = sessionStorage.getItem("username");
     const displayName = sessionStorage.getItem("displayName");
@@ -96,7 +97,8 @@ function ChatWindow() {
     }
     lastCommand.current = { fid, command, time: Date.now() };
 
-    console.log("sendCommand: fid =", fid, "username =", username, "displayName =", displayName, "command =", command);
+    console.log("sendCommand: fid =", fid, "username =", username, "displayName =", displayName, "command =", command, "args =", args);
+
     if (!fid) {
       setMessages([
         ...messages,
@@ -105,12 +107,28 @@ function ChatWindow() {
       return;
     }
 
-    setMessages([...messages, { text: command, isUser: true }]);
+    setMessages([...messages, { text: args || command, isUser: true }]);
     setIsLoading(true);
+
     try {
+      const payload: any = {
+        fid,
+        username,
+        displayName,
+      };
+
+      let endpoint = "/api/chat/command";
+      if (args) {
+        endpoint = "/api/callback";
+        payload.callback = command;
+        payload.args = args;
+      } else {
+        payload.command = command;
+      }
+
       const { data } = await axios.post(
-        "https://forgeback-production.up.railway.app/api/chat/command",
-        { command, fid, username, displayName }
+        `https://forgeback-production.up.railway.app${endpoint}`,
+        payload
       );
       setMessages((prev) => [
         ...prev,
@@ -122,10 +140,12 @@ function ChatWindow() {
         console.log("Axios error details:", {
           message: error.message,
           code: error.code,
-          response: error.response ? {
-            status: error.response.status,
-            data: error.response.data,
-          } : null,
+          response: error.response
+            ? {
+                status: error.response.status,
+                data: error.response.data,
+              }
+            : null,
         });
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -141,7 +161,14 @@ function ChatWindow() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim()) {
-      sendCommand(input);
+      // Check if last message prompts for private key
+      if (
+        messages[messages.length - 1]?.text.includes("Please send your private key")
+      ) {
+        sendCommand("import_wallet", input.trim()); // Send as args
+      } else {
+        sendCommand(input.trim()); // Send as command
+      }
       setInput("");
     }
   };
