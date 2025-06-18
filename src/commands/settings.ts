@@ -18,7 +18,8 @@ export const settingsHandler = {
 
       let settings = session.settings;
       if (!settings) {
-        settings = getUserSettings(userId) || undefined;
+        settings = (await getUserSettings(userId)) || undefined;
+
         if (settings) {
           session.settings = settings;
         } else {

@@ -9,6 +9,11 @@ export const QUICKNODE_RPC_URL = process.env.QUICKNODE_RPC || "";
 export const OPENOCEAN_ADDON_ID = "807";
 export const ENCRYPTION_KEY = process.env.WALLET_ENCRYPTION_KEY || "";
 
+// Supabase Credentials
+export const SUPABASE_URL = process.env.SUPABASE_URL || "";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
 // Base mainnet constants
 export const BASE_CHAIN_ID = "8453";
 

@@ -7,7 +7,7 @@ import { Request } from "express";
 import { SessionData } from "../types/commands"; // Import SessionData
 
 // Configuration
-const FARCSTER_DOMAIN = process.env.FARCSTER_DOMAIN || "forge-bot.vercel.app";
+const FARCSTER_DOMAIN = process.env.FARCSTER_DOMAIN || "mini-testf.netlify.app";
 const BASE_RPC_URL =
   "https://base-mainnet.g.alchemy.com/v2/" + process.env.ALCHEMY_API_KEY;
 

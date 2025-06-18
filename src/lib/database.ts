@@ -1,17 +1,17 @@
-import Database from "better-sqlite3";
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { WalletData } from "../types/wallet";
 import { UserSettings } from "../types/config";
-import { DB_PATH, DB_TABLES } from "../utils/constants";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, DB_TABLES } from "../utils/constants";
 
-const db = new Database(DB_PATH);
+const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Define types for database rows
 type UserRow = {
   userId: string;
-  telegramId: string;
-  username: string | null;
-  firstName: string | null;
-  lastName: string | null;
+  fid: string;
+  username?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   createdAt: number;
 };
 
@@ -42,152 +42,157 @@ type TransactionRow = {
   timestamp: number;
 };
 
-// Initialize tables
+// Initialize tables (Supabase handles schema, so this function will be simplified)
 export function initDatabase(): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS ${DB_TABLES.USERS} (
-      userId TEXT PRIMARY KEY,
-      telegramId TEXT NOT NULL,
-      username TEXT,
-      firstName TEXT,
-      lastName TEXT,
-      createdAt INTEGER NOT NULL
-    );
-    
-    CREATE TABLE IF NOT EXISTS ${DB_TABLES.WALLETS} (
-      address TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      encryptedPrivateKey TEXT NOT NULL,
-      type TEXT NOT NULL,
-      createdAt INTEGER NOT NULL,
-      FOREIGN KEY (userId) REFERENCES ${DB_TABLES.USERS}(userId)
-    );
-    
-    CREATE TABLE IF NOT EXISTS ${DB_TABLES.SETTINGS} (
-      userId TEXT PRIMARY KEY,
-      slippage REAL NOT NULL,
-      gasPriority TEXT NOT NULL,
-      FOREIGN KEY (userId) REFERENCES ${DB_TABLES.USERS}(userId)
-    );
-    
-    CREATE TABLE IF NOT EXISTS ${DB_TABLES.TRANSACTIONS} (
-      txHash TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      walletAddress TEXT NOT NULL,
-      fromToken TEXT NOT NULL,
-      toToken TEXT NOT NULL,
-      fromAmount TEXT NOT NULL,
-      toAmount TEXT,
-      status TEXT NOT NULL,
-      gasUsed TEXT,
-      timestamp INTEGER NOT NULL,
-      FOREIGN KEY (userId) REFERENCES ${DB_TABLES.USERS}(userId),
-      FOREIGN KEY (walletAddress) REFERENCES ${DB_TABLES.WALLETS}(address)
-    );
-  `);
+  console.log("Supabase database initialization handled externally. Ensure tables are created in your Supabase project.");
 }
 
 // User operations
-export function createUser(
+export async function createUser(
   userId: string,
-  telegramId: string,
+  fid: string,
   username?: string,
   firstName?: string,
   lastName?: string
-): void {
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO ${DB_TABLES.USERS} (userId, telegramId, username, firstName, lastName, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+): Promise<void> {
+   console.log("createUser: Creating user with fid =", fid, "userId =", userId);
+  const { error } = await supabase
+    .from(DB_TABLES.USERS)
+    .insert({
+      userId,
+      fid,
+      username,
+      firstName,
+      lastName,
+      createdAt: Date.now(),
+    })
+    .single();
 
-  stmt.run(userId, telegramId, username, firstName, lastName, Date.now());
+  if (error) {
+    console.error("Error creating user:", error.message);
+    throw new Error("Failed to create user.");
+  }
 }
 
-export function getUserByTelegramId(telegramId: string): UserRow | undefined {
-  const stmt = db.prepare(`
-    SELECT * FROM ${DB_TABLES.USERS} WHERE telegramId = ?
-  `);
+export async function getUserByfid(fid: string): Promise<UserRow | undefined> {
+  const { data, error } = await supabase
+    .from(DB_TABLES.USERS)
+    .select('*')
+    .eq('fid', fid)
+    .single();
 
-  return stmt.get(telegramId) as UserRow | undefined;
+  if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
+    console.error("Error getting user by Telegram ID:", error.message);
+    throw new Error("Failed to get user by Telegram ID.");
+  }
+
+  return data as UserRow | undefined;
 }
 
 // Wallet operations
-export function saveWallet(walletData: WalletData, userId: string): void {
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO ${DB_TABLES.WALLETS} (address, userId, encryptedPrivateKey, type, createdAt)
-    VALUES (?, ?, ?, ?, ?)
-  `);
+export async function saveWallet(walletData: WalletData, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from(DB_TABLES.WALLETS)
+    .upsert({
+      address: walletData.address,
+      userId,
+      encryptedPrivateKey: walletData.encryptedPrivateKey,
+      type: walletData.type,
+      createdAt: walletData.createdAt,
+    })
+    .single();
 
-  stmt.run(
-    walletData.address,
-    userId,
-    walletData.encryptedPrivateKey,
-    walletData.type,
-    walletData.createdAt
-  );
+  if (error) {
+    console.error("Error saving wallet:", error.message);
+    throw new Error("Failed to save wallet.");
+  }
 }
 
-export function getWalletByUserId(userId: string): WalletData | null {
-  const stmt = db.prepare(`
-    SELECT * FROM ${DB_TABLES.WALLETS} WHERE userId = ?
-  `);
+export async function getWalletByUserId(userId: string): Promise<WalletData | null> {
+  const { data, error } = await supabase
+    .from(DB_TABLES.WALLETS)
+    .select('*')
+    .eq('userId', userId)
+    .single();
 
-  const result = stmt.get(userId) as WalletRow | undefined;
-  return result ? (result as unknown as WalletData) : null;
+  if (error && error.code !== 'PGRST116') {
+    console.error("Error getting wallet by user ID:", error.message);
+    throw new Error("Failed to get wallet by user ID.");
+  }
+
+  return data ? (data as unknown as WalletData) : null;
 }
 
-export function getWalletByAddress(address: string): WalletData | null {
-  const stmt = db.prepare(`
-    SELECT * FROM ${DB_TABLES.WALLETS} WHERE address = ?
-  `);
+export async function getWalletByAddress(address: string): Promise<WalletData | null> {
+  const { data, error } = await supabase
+    .from(DB_TABLES.WALLETS)
+    .select('*')
+    .eq('address', address)
+    .single();
 
-  const result = stmt.get(address) as WalletRow | undefined;
-  return result ? (result as unknown as WalletData) : null;
+  if (error && error.code !== 'PGRST116') {
+    console.error("Error getting wallet by address:", error.message);
+    throw new Error("Failed to get wallet by address.");
+  }
+
+  return data ? (data as unknown as WalletData) : null;
 }
 
-export function deleteWallet(address: string): void {
-  const stmt = db.prepare(`
-    DELETE FROM ${DB_TABLES.WALLETS} WHERE address = ?
-  `);
+export async function deleteWallet(address: string): Promise<void> {
+  const { error } = await supabase
+    .from(DB_TABLES.WALLETS)
+    .delete()
+    .eq('address', address);
 
-  stmt.run(address);
+  if (error) {
+    console.error("Error deleting wallet:", error.message);
+    throw new Error("Failed to delete wallet.");
+  }
 }
 
 // Settings operations
-export function saveUserSettings(
+export async function saveUserSettings(
   userId: string,
   settings: Omit<UserSettings, "userId">
-): void {
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO ${DB_TABLES.SETTINGS} (userId, slippage, gasPriority)
-    VALUES (?, ?, ?)
-  `);
+): Promise<void> {
+  const { error } = await supabase
+    .from(DB_TABLES.SETTINGS)
+    .upsert({
+      userId,
+      slippage: settings.slippage,
+      gasPriority: settings.gasPriority,
+    })
+    .single();
 
-  stmt.run(
-    userId,
-    settings.slippage,
-    settings.gasPriority,
-  );
+  if (error) {
+    console.error("Error saving user settings:", error.message);
+    throw new Error("Failed to save user settings.");
+  }
 }
 
-export function getUserSettings(userId: string): UserSettings | null {
-  const stmt = db.prepare(`
-    SELECT * FROM ${DB_TABLES.SETTINGS} WHERE userId = ?
-  `);
+export async function getUserSettings(userId: string): Promise<UserSettings | null> {
+  const { data, error } = await supabase
+    .from(DB_TABLES.SETTINGS)
+    .select('*')
+    .eq('userId', userId)
+    .single();
 
-  const result = stmt.get(userId) as SettingsRow | undefined;
+  if (error && error.code !== 'PGRST116') {
+    console.error("Error getting user settings:", error.message);
+    throw new Error("Failed to get user settings.");
+  }
 
-  if (!result) return null;
+  if (!data) return null;
 
   return {
-    userId,
-    slippage: result.slippage,
-    gasPriority: result.gasPriority as UserSettings["gasPriority"],
+    userId: data.userId,
+    slippage: data.slippage,
+    gasPriority: data.gasPriority as UserSettings["gasPriority"],
   };
 }
 
 // Transaction operations
-export function saveTransaction(
+export async function saveTransaction(
   txHash: string,
   userId: string,
   walletAddress: string,
@@ -197,59 +202,76 @@ export function saveTransaction(
   status: string,
   toAmount?: string,
   gasUsed?: string
-): void {
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO ${DB_TABLES.TRANSACTIONS} (
-      txHash, userId, walletAddress, fromToken, toToken, 
-      fromAmount, toAmount, status, gasUsed, timestamp
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+): Promise<void> {
+  const { error } = await supabase
+    .from(DB_TABLES.TRANSACTIONS)
+    .upsert({
+      txHash,
+      userId,
+      walletAddress,
+      fromToken,
+      toToken,
+      fromAmount,
+      toAmount,
+      status,
+      gasUsed,
+      timestamp: Date.now(),
+    })
+    .single();
 
-  stmt.run(
-    txHash,
-    userId,
-    walletAddress,
-    fromToken,
-    toToken,
-    fromAmount,
-    toAmount,
-    status,
-    gasUsed,
-    Date.now()
-  );
+  if (error) {
+    console.error("Error saving transaction:", error.message);
+    throw new Error("Failed to save transaction.");
+  }
 }
 
-export function getTransactionsByUserId(
+export async function getTransactionsByUserId(
   userId: string,
   limit = 10
-): TransactionRow[] {
-  const stmt = db.prepare(`
-    SELECT * FROM ${DB_TABLES.TRANSACTIONS} 
-    WHERE userId = ? 
-    ORDER BY timestamp DESC 
-    LIMIT ?
-  `);
+): Promise<TransactionRow[]> {
+  const { data, error } = await supabase
+    .from(DB_TABLES.TRANSACTIONS)
+    .select('*')
+    .eq('userId', userId)
+    .order('timestamp', { ascending: false })
+    .limit(limit);
 
-  return stmt.all(userId, limit) as TransactionRow[];
+  if (error) {
+    console.error("Error getting transactions by user ID:", error.message);
+    throw new Error("Failed to get transactions by user ID.");
+  }
+
+  return data as TransactionRow[];
 }
 
-export function getUniqueTokensByUserId(userId: string): string[] {
-  const stmt = db.prepare(`
-    SELECT DISTINCT fromToken AS token FROM ${DB_TABLES.TRANSACTIONS}
-    WHERE userId = ?
-    UNION
-    SELECT DISTINCT toToken AS token FROM ${DB_TABLES.TRANSACTIONS}
-    WHERE userId = ?
-  `);
+export async function getUniqueTokensByUserId(userId: string): Promise<string[]> {
+  const { data: fromTokens, error: fromError } = await supabase
+    .from(DB_TABLES.TRANSACTIONS)
+    .select('fromToken')
+    .eq('userId', userId);
 
-  const rows = stmt.all(userId, userId) as { token: string }[];
+  if (fromError) {
+    console.error("Error getting unique fromTokens:", fromError.message);
+    throw new Error("Failed to get unique tokens.");
+  }
 
-  return rows.map((row) => row.token);
+  const { data: toTokens, error: toError } = await supabase
+    .from(DB_TABLES.TRANSACTIONS)
+    .select('toToken')
+    .eq('userId', userId);
+
+  if (toError) {
+    console.error("Error getting unique toTokens:", toError.message);
+    throw new Error("Failed to get unique tokens.");
+  }
+
+  const allTokens = [...(fromTokens || []).map(row => row.fromToken), ...(toTokens || []).map(row => row.toToken)];
+  return Array.from(new Set(allTokens)).filter(token => token !== null) as string[];
 }
 
-
-// Close database connection
+// Close database connection (not needed for Supabase)
 export function closeDatabase(): void {
-  db.close();
+  console.log("Supabase connection managed automatically.");
 }
+
+

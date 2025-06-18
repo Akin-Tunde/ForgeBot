@@ -30,9 +30,13 @@ export const balanceHandler = {
 
       const ethBalance = await getEthBalance(wallet.address as `0x${string}`);
       const tokenData = await getTokenBalance(wallet.address);
-      const interactedTokens = getUniqueTokensByUserId(userId).map((t) =>
+
+      // ✅ Fix: Await the function before calling `.map()`
+      const interactedTokensRaw = await getUniqueTokensByUserId(userId);
+      const interactedTokens = interactedTokensRaw.map((t: string) =>
         t.toLowerCase()
       );
+
       const tokens: TokenInfo[] = [];
 
       if (tokenData?.tokens) {
@@ -77,6 +81,7 @@ export const balanceHandler = {
     }
   },
 };
+
 
 export const historyHandler = {
   command: "history",
