@@ -1,3 +1,4 @@
+// src/types/commands.ts
 import { UserSettings } from "./config";
 import { WalletData } from "./wallet";
 
@@ -8,20 +9,20 @@ export interface SessionData {
   tempData?: Record<string, any>;
   settings?: UserSettings;
   fid?: string;
-  username?: string; // Add username
-  displayName?: string; // Add displayName
+  username?: string;
+  displayName?: string;
 }
 
 export interface CommandContext {
   session: SessionData;
   wallet?: WalletData;
-  args?: string; // Single string for input (e.g., private key, amount)
+  args?: string;
 }
 
 export interface CommandHandler {
   command: string;
   description: string;
-  handler: (ctx: CommandContext) => Promise<{
+  handler: (ctx?: CommandContext) => Promise<{
     response: string;
     buttons?: { label: string; callback: string }[][];
   }>;
