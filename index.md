@@ -1,14 +1,22 @@
 import express, { Request, Response, NextFunction } from "express";
 import session from "express-session";
 import dotenv from "dotenv";
-import cors from "cors";
-
 import { initDatabase, closeDatabase } from "./src/lib/database";
 import { verifyEncryptionKey } from "./src/lib/encryption";
 import { CommandContext, SessionData } from "./src/types/commands";
 import { verifyFarcasterSignature } from "./src/lib/farcaster";
 import { getWallet } from "./src/lib/token-wallet"; // Import getWallet
 
+// Extend express-session to include SessionData
+declare module "express-session" {
+  interface SessionData {
+    userId: string;
+    currentAction?: string;
+    tempData: Record<string, any>;
+    settings: { slippage: number; gasPriority: string };
+    walletAddress?: string;
+  }
+}
 
 // Import commands
 import { startHandler, helpHandler } from "./src/commands/start-help";
@@ -52,21 +60,6 @@ import {
   handleWithdrawConfirmation,
 } from "./src/commands/withdraw";
 
-// Extend express-session to include SessionData
-declare module "express-session" {
-  interface SessionData {
-    userId: string;
-    currentAction?: string;
-    tempData: Record<string, any>;
-    settings: { slippage: number; 
-    gasPriority: string };
-    walletAddress?: string;
-    fid?: string;
-  username?: string; // Added
-  displayName?: string; // Added
-  }
-}
-
 // Load environment variables
 dotenv.config();
 
@@ -93,14 +86,10 @@ const app = express();
 // ✅ Use CORS middleware BEFORE anything else
 app.use(
   cors({
-    origin: [
-      "https://mini-testf.netlify.app",
-      "http://localhost:3000",
-      "http://localhost:5173", // Add this if your frontend runs on port 5173
-    ],
+    origin: "https://mini-testf.netlify.app",
     credentials: true,
   })
-);
+);;
 
 
 // Middleware
@@ -119,62 +108,36 @@ app.get("/", (req, res) => {
 
 
 // Farcaster authentication middleware
-
-const authenticateFarcaster = (
+const authenticateFarcaster = async (
   req: Request,
   res: Response,
   next: NextFunction
-): void => {
-  const fid = req.body.fid;
-  const username = req.body.username;
-  const displayName = req.body.displayName;
-  console.log("authenticateFarcaster: fid =", fid);
-  console.log("authenticateFarcaster: username =", username);
-  console.log("authenticateFarcaster: displayName =", displayName);
-
-  if (!fid) {
-    console.log("authenticateFarcaster: No FID provided, skipping authentication");
-    return next(); // Proceed without setting session data
-  }
-
-  // Set session data
-  req.session.userId = fid.toString();
-  req.session.fid = fid.toString();
-  req.session.username = username || undefined; // Store undefined if not provided
-  req.session.displayName = displayName || undefined;
-  console.log("authenticateFarcaster: Set session.userId =", req.session.userId);
-  console.log("authenticateFarcaster: Set session.fid =", req.session.fid);
-  console.log("authenticateFarcaster: Set session.username =", req.session.username);
-  console.log("authenticateFarcaster: Set session.displayName =", req.session.displayName);
-
-  // Explicitly save the session
-  req.session.save((err) => {
-    if (err) {
-      console.error("Error saving session:", err);
-      return res.status(500).send("Failed to save session");
+): Promise<void> => {
+  const { user } = req.body;
+  if (user?.nonce && user?.signature && user?.message) {
+    const isValid = await verifyFarcasterSignature(req);
+    if (!isValid) {
+      res.status(401).json({ response: "❌ Farcaster authentication failed." });
+      return;
     }
-    next();
-  });
+  }
+  next();
 };
-// Initialize session data middleware
+
+// Initialize session data
 const ensureSessionData = (
   req: Request,
   res: Response,
   next: NextFunction
 ): void => {
-  console.log("ensureSessionData: req.session.userId =", req.session.userId, "req.body.fid =", req.body.fid);
-  if (!req.session.userId && !req.body.fid) {
-    req.session.userId = `guest_${Date.now()}`;
-    console.log("ensureSessionData: Set guest userId =", req.session.userId);
-  }
-  if (!req.session.currentAction) {
+  if (!req.session.userId) {
+    req.session.userId = `guest_${Date.now()}`; // Fallback guest ID
     req.session.currentAction = undefined;
     req.session.tempData = {};
     req.session.settings = { slippage: 1.0, gasPriority: "medium" };
   }
   next();
 };
-
 
 // API Routes
 app.post(
@@ -636,100 +599,6 @@ app.post(
   }
 );
 
-// New /api/chat/command endpoint to handle generic commands from frontend
-app.post(
-  "/api/chat/command",
-  authenticateFarcaster,
-  ensureSessionData,
-  async (req: Request, res: Response): Promise<void> => {
-    const { command, fid } = req.body; // Assuming fid is also sent from frontend
-    let result;
-
-    // Log the incoming command for debugging purposes
-    console.log(`Received command: ${command}, FID: ${fid}`);
-console.log("Session userId:", req.session.userId);
-
-    // Map the incoming 'command' string to the appropriate backend handler.
-    // This switch statement provides a basic example. You might need to adjust
-    // how 'args' and 'callback' are handled if your frontend sends them differently
-    // for certain commands.
-    switch (command) {
-      case "/start":
-        result = await startHandler.handler({
-          session: req.session as SessionData,
-        });
-        break;
-      case "/balance":
-        result = await balanceHandler.handler({
-          session: req.session as SessionData,
-          wallet: req.session.userId
-            ? (await getWallet(req.session.userId)) || undefined
-            : undefined,
-        });
-        break;
-      case "/buy":
-        // For commands like /buy, /sell, /import, /withdraw, /history, /settings
-        // which have complex flows and might expect 'args' or 'callback' in their
-        // specific API endpoints, you'll need to decide how to pass these from the frontend
-        // or derive them here. If the frontend only sends the base command (e.g., "/buy"), then
-        // the initial handler (e.g., buyHandler.handler) will be called, which
-        // typically returns buttons for the next step.
-        result = await buyHandler.handler({
-          session: req.session as SessionData,
-          wallet: req.session.userId
-            ? (await getWallet(req.session.userId)) || undefined
-            : undefined,
-        });
-        break;
-      case "/sell":
-        result = await sellHandler.handler({
-          session: req.session as SessionData,
-          wallet: req.session.userId
-            ? (await getWallet(req.session.userId)) || undefined
-            : undefined,
-        });
-        break;
-      case "/deposit":
-        result = await depositHandler.handler({
-          session: req.session as SessionData,
-          wallet: req.session.userId
-            ? (await getWallet(req.session.userId)) || undefined
-            : undefined,
-        });
-        break;
-      case "/withdraw":
-        result = await withdrawHandler.handler({
-          session: req.session as SessionData,
-          wallet: req.session.userId
-            ? (await getWallet(req.session.userId)) || undefined
-            : undefined,
-        });
-        break;
-      case "/wallet":
-        result = await walletHandler.handler({
-          session: req.session as SessionData,
-        });
-        break;
-      case "/settings":
-        result = await settingsHandler.handler({
-          session: req.session as SessionData,
-        });
-        break;
-      case "/help":
-        result = await helpHandler.handler();
-        break;
-      // Add more cases for other commands as needed
-      default:
-        // If the command is not recognized, return an error or a default message
-        result = { response: `Unknown command: ${command}. Please try /help.` };
-        break;
-    }
-    res.json(result);
-    return;
-  }
-);
-
-
 // Callback query handler
 app.post(
   "/api/callback",
@@ -826,7 +695,7 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   console.log(`🤖 Base MEV-Protected Trading Bot running on port ${PORT}`);
   console.log(`ℹ️ API available at http://localhost:${PORT}`);
-  console.log(`ℹ️ Frontend: http://localhost:5173/`);
+  console.log(`ℹ️ Frontend: https://mini-testf.netlify.app`);
 });
 
 // Handle graceful shutdown

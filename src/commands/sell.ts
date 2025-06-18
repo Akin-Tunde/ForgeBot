@@ -38,9 +38,10 @@ export const sellHandler = {
       }
 
       const tokenData = await getTokenBalance(wallet.address);
-      const interactedTokens = getUniqueTokensByUserId(userId).map((t) =>
-        t.toLowerCase()
-      );
+      const interactedTokensRaw = await getUniqueTokensByUserId(userId);
+const interactedTokens = interactedTokensRaw.map((t: string) =>
+  t.toLowerCase()
+);
 
       if (tokenData && Array.isArray(tokenData.tokens)) {
         tokenData.tokens = tokenData.tokens.filter((token) => {

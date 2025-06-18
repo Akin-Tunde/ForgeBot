@@ -7,7 +7,9 @@ export interface SessionData {
   currentAction?: string;
   tempData?: Record<string, any>;
   settings?: UserSettings;
-  fid?: string; // Farcaster ID, store as string
+  fid?: string;
+  username?: string; // Add username
+  displayName?: string; // Add displayName
 }
 
 export interface CommandContext {

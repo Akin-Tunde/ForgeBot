@@ -16,6 +16,9 @@ app.use(
 app.use("/api/chat", chatRoutes);
 app.use("/api/auth", authRoutes);
 app.use(express.static("dist"));
+app.get("/", (req, res) => {
+  res.send("🔧 ForgeBot backend is running.");
+});
 app.get("/.well-known/farcaster.json", (req, res) => {
   res.json({
     frame: {
