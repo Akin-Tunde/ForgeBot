@@ -12,7 +12,7 @@
     "imageUrl": "https://mini-testf.netlify.app/image.png",
     "buttonTitle": "Check this out",
     "splashImageUrl": "https://mini-testf.netlify.app/splash.png",
-    "splashBackgroundColor": "#eeccff",
+    "splashBackgroundColor": "#ffffff",
     "webhookUrl": "https://mini-testf.netlify.app/api/webhook"
   }
 }
