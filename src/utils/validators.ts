@@ -10,10 +10,18 @@ export function isValidAddress(address: string): boolean {
 /**
  * Validate if a string is a valid private key
  */
-export function isValidPrivateKey(privateKey: string): boolean {
+//export function isValidPrivateKey(privateKey: string): boolean {
   // Private key should be 64 hex characters with or without 0x prefix
-  const hexRegex = /^(0x)?[0-9a-fA-F]{64}$/;
-  return hexRegex.test(privateKey);
+  //const hexRegex = /^(0x)?[0-9a-fA-F]{64}$/;
+  //return hexRegex.test(privateKey);
+//}
+
+// src/utils/validators.ts
+export function isValidPrivateKey(privateKey: string): boolean {
+  // Remove 0x prefix if present
+  const cleanedKey = privateKey.startsWith("0x") ? privateKey.slice(2) : privateKey;
+  // Check if it's a 64-character hexadecimal string
+  return /^[0-9a-fA-F]{64}$/.test(cleanedKey);
 }
 
 /**

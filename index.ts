@@ -744,110 +744,100 @@ app.post(
   }
 );
 
+// index.ts (updated /api/callback)
+
+// index.ts (updated /api/callback)
 app.post(
   "/api/callback",
   authenticateFarcaster,
   ensureSessionData,
   async (req: Request, res: Response): Promise<void> => {
     const { callback, args } = req.body;
-    const wallet = req.session.userId
-      ? (await getWallet(req.session.userId)) || undefined
+    const session = req.session as SessionData;
+    const wallet = session.userId
+      ? (await getWallet(session.userId)) || undefined
       : undefined;
     let result;
 
-    console.log(`Received callback: ${callback}, args: ${args}, currentAction: ${(req.session as SessionData).currentAction}`); // Debug
+    console.log(`Received callback: ${callback}, args: ${args}, currentAction: ${session.currentAction}, userId: ${session.userId}, walletAddress: ${session.walletAddress}, sessionId: ${req.sessionID}`);
 
-    if ((req.session as SessionData).currentAction === "import_wallet" && args) {
+    if (callback === "import_wallet" && args) {
+      console.log("Processing private key input with args:", args);
+      // Ensure currentAction is set
+      if (session.currentAction !== "import_wallet") {
+        console.warn("currentAction was undefined or incorrect, setting to import_wallet");
+        session.currentAction = "import_wallet";
+      }
       result = await handlePrivateKeyInput({
-        session: req.session as SessionData,
+        session,
         args,
         wallet,
       });
-    } else if ((req.session as SessionData).currentAction === "export_wallet") {
+    } else if (session.currentAction === "import_wallet" && args) {
+      console.log("Processing private key input (legacy condition):", args);
+      result = await handlePrivateKeyInput({
+        session,
+        args,
+        wallet,
+      });
+    } else if (session.currentAction === "export_wallet") {
       if (callback === "confirm_yes" || callback === "confirm_no") {
         result = await handleExportConfirmation(
-          {
-            session: req.session as SessionData,
-            wallet,
-          },
+          { session, wallet },
           callback === "confirm_yes"
         );
       } else {
         result = { response: "❌ Invalid callback for export confirmation." };
       }
     } else if (callback === "check_balance") {
-      result = await balanceHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await balanceHandler.handler({ session, wallet });
     } else if (callback === "check_history") {
-      result = await historyHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await historyHandler.handler({ session, wallet });
     } else if (callback === "buy_token") {
-      result = await buyHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await buyHandler.handler({ session, wallet });
     } else if (callback === "sell_token") {
-      result = await sellHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await sellHandler.handler({ session, wallet });
     } else if (callback === "open_settings") {
-      result = await settingsHandler.handler({
-        session: req.session as SessionData,
-      });
+      result = await settingsHandler.handler({ session });
     } else if (callback === "deposit") {
-      result = await depositHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await depositHandler.handler({ session, wallet });
     } else if (callback === "withdraw") {
-      result = await withdrawHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await withdrawHandler.handler({ session, wallet });
     } else if (callback === "help") {
       result = await helpHandler.handler();
     } else if (callback === "export_key") {
-      result = await exportHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      result = await exportHandler.handler({ session, wallet });
     } else if (callback === "create_wallet") {
-      result = await createHandler.handler({
-        session: req.session as SessionData,
-      });
+      result = await createHandler.handler({ session });
     } else if (callback === "import_wallet") {
-      result = await importHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      console.log("Triggering importHandler for import_wallet callback");
+      result = await importHandler.handler({ session, wallet });
     } else if (callback === "confirm_create_wallet") {
-      req.session.walletAddress = undefined;
-      result = await createHandler.handler({
-        session: req.session as SessionData,
-      });
+      session.walletAddress = undefined;
+      result = await createHandler.handler({ session });
     } else if (callback === "cancel_create_wallet") {
       result = {
         response: "Operation cancelled. Your existing wallet remains unchanged.",
       };
     } else if (callback === "confirm_import_wallet") {
-      req.session.walletAddress = undefined;
-      result = await importHandler.handler({
-        session: req.session as SessionData,
-        wallet,
-      });
+      session.walletAddress = undefined;
+      console.log("Confirming import wallet, clearing walletAddress");
+      result = await importHandler.handler({ session, wallet });
     } else if (callback === "cancel_import_wallet") {
-      (req.session as SessionData).currentAction = undefined;
+      session.currentAction = undefined;
       result = {
         response: "Operation cancelled. Your existing wallet remains unchanged.",
       };
     } else {
+      console.log("Unknown callback received:", callback);
       result = { response: "❌ Unknown callback." };
     }
+
+    // Ensure session is saved
+    req.session.save((err) => {
+      if (err) console.error("Error saving session:", err);
+    });
+
     res.json(result);
     return;
   }

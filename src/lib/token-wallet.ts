@@ -25,6 +25,8 @@ import {
   NATIVE_TOKEN_ADDRESS,
   MAX_UINT256,
 } from "../utils/constants";
+import { isValidPrivateKey } from "../utils/validators";
+
 
 // *** WALLET FUNCTIONS *** //
 
@@ -78,24 +80,35 @@ export async function importWallet(
   userId: string,
   privateKey: string
 ): Promise<WalletData> {
-  // Remove 0x prefix if present
-  const cleanPrivateKey = privateKey.replace(/^0x/, "");
+  try {
+    // Remove 0x prefix if present
+    const cleanPrivateKey = privateKey.replace(/^0x/, "");
 
-  // Create account from private key
-  const account = privateKeyToAccount(`0x${cleanPrivateKey}`);
+    // Validate private key format
+    if (!isValidPrivateKey(cleanPrivateKey)) {
+      throw new Error("Invalid private key format");
+    }
 
-  const walletData: WalletData = {
-    address: account.address,
-    encryptedPrivateKey: encrypt(cleanPrivateKey),
-    type: "imported",
-    createdAt: Date.now(),
-  };
+    // Create account from private key
+    const account = privateKeyToAccount(`0x${cleanPrivateKey}`);
 
-  // Save wallet to database
-  saveWallet(walletData, userId);
+    const walletData: WalletData = {
+      address: account.address,
+      encryptedPrivateKey: encrypt(cleanPrivateKey),
+      type: "imported",
+      createdAt: Date.now(),
+    };
 
-  return walletData;
+    // Save wallet to database
+    await saveWallet(walletData, userId);
+
+    return walletData;
+  } catch (error) {
+    console.error("Error importing wallet:", error);
+    throw new Error("Invalid private key or database error");
+  }
 }
+
 
 /**
  * Get wallet for a user
