@@ -1,3 +1,4 @@
+// src/commands/buy.ts
 import { CommandContext } from "../types/commands";
 import {
   getTokenInfo,

@@ -817,6 +817,20 @@ app.post(
         console.log("[Callback] Processing gas priority selection:", callback);
         const priority = callback.replace("gasPriority_", "") as "low" | "medium" | "high";
         result = await updateGasPriority({ session }, priority);
+      } else if (["USDC", "DAI", "WBTC", "custom"].includes(callback)) {
+        console.log("[Callback] Handling token selection:", callback, "for userId:", session.userId);
+        result = await handleTokenSelection({ session, args: callback });
+      } else if (session.currentAction === "buy_custom_token" && args) {
+        console.log("[Callback] Handling custom token input:", args, "for userId:", session.userId);
+        result = await handleCustomTokenInput({ session, args });
+      } else if (session.currentAction === "buy_amount" && args) {
+        console.log("[Callback] Handling buy amount input:", args, "for userId:", session.userId);
+        result = await handleBuyAmountInput({ session, args });
+      } else if (session.currentAction === "buy_confirm" && (callback === "confirm_yes" || callback === "confirm_no")) {
+        console.log("[Callback] Handling buy confirmation:", callback, "for userId:", session.userId);
+        result = await handleBuyConfirmation({ session, wallet }, callback === "confirm_yes");
+        session.currentAction = undefined;
+        await session.save();
       } else if (callback === "import_wallet" && args) {
         console.log("[Callback] Processing private key input with args:", args);
         if (session.currentAction !== "import_wallet") {
