@@ -1,4 +1,7 @@
+// src/lib/database.ts
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import session from 'express-session';
 import { WalletData } from "../types/wallet";
 import { UserSettings } from "../types/config";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, DB_TABLES } from "../utils/constants";
@@ -46,6 +49,88 @@ type TransactionRow = {
 export function initDatabase(): void {
   console.log("Supabase database initialization handled externally. Ensure tables are created in your Supabase project.");
 }
+
+// Supabase Session Store
+export class SupabaseSessionStore extends session.Store {
+  private tableName: string;
+  private ttl: number;
+
+  constructor(private supabase: SupabaseClient, options: { tableName: string; ttl: number }) {
+    super();
+    this.tableName = options.tableName;
+    this.ttl = options.ttl;
+  }
+async get(sid: string, callback: (err: any, session?: any) => void) {
+    try {
+      const { data, error } = await this.supabase
+        .from(this.tableName)
+        .select("session, expires")
+        .eq("sid", sid)
+        .single();
+      if (error) {
+        console.error("[SessionStore] Get error for sid:", sid, error);
+        return callback(error);
+      }
+      if (!data || new Date(data.expires) < new Date()) {
+        console.log("[SessionStore] No session or expired for sid:", sid);
+        return callback(null, null);
+      }
+      console.log("[SessionStore] Retrieved session for sid:", sid);
+      callback(null, JSON.parse(data.session));
+    } catch (err) {
+      console.error("[SessionStore] Get exception for sid:", sid, err);
+      callback(err);
+    }
+  }
+
+  async set(sid: string, session: any, callback: (err?: any) => void) {
+    try {
+      const expires = new Date(Date.now() + this.ttl * 1000).toISOString();
+      console.log("[SessionStore] Setting session for sid:", sid, "expires:", expires);
+      const { error } = await this.supabase
+        .from(this.tableName)
+        .upsert({
+          sid,
+          session: JSON.stringify(session),
+          expires,
+        });
+      if (error) {
+        console.error("[SessionStore] Set error for sid:", sid, error);
+        throw error;
+      }
+      console.log("[SessionStore] Session set successfully for sid:", sid);
+      callback();
+    } catch (err) {
+      console.error("[SessionStore] Set exception for sid:", sid, err);
+      callback(err);
+    }
+  }
+
+  async destroy(sid: string, callback: (err?: any) => void) {
+    try {
+      console.log("[SessionStore] Destroying session for sid:", sid);
+      const { error } = await this.supabase
+        .from(this.tableName)
+        .delete()
+        .eq("sid", sid);
+      if (error) {
+        console.error("[SessionStore] Destroy error for sid:", sid, error);
+        throw error;
+      }
+      console.log("[SessionStore] Session destroyed for sid:", sid);
+      callback();
+    } catch (err) {
+      console.error("[SessionStore] Destroy exception for sid:", sid, err);
+      callback(err);
+    }
+  }
+}
+
+export const sessionStore = new SupabaseSessionStore(supabase, {
+  tableName: "sessions",
+  ttl: 24 * 60 * 60, // 24 hours
+});
+
 
 // User operations
 export async function createUser(
@@ -151,44 +236,62 @@ export async function deleteWallet(address: string): Promise<void> {
 }
 
 // Settings operations
+// src/lib/database.ts (only modified functions)
 export async function saveUserSettings(
   userId: string,
   settings: Omit<UserSettings, "userId">
 ): Promise<void> {
-  const { error } = await supabase
-    .from(DB_TABLES.SETTINGS)
-    .upsert({
-      userId,
-      slippage: settings.slippage,
-      gasPriority: settings.gasPriority,
-    })
-    .single();
+  try {
+    console.log("[Database] saveUserSettings: Saving settings for userId:", userId, "settings:", settings);
+    const { error } = await supabase
+      .from(DB_TABLES.SETTINGS)
+      .upsert({
+        userId,
+        slippage: settings.slippage,
+        gasPriority: settings.gasPriority,
+      })
+      .single();
 
-  if (error) {
-    console.error("Error saving user settings:", error.message);
-    throw new Error("Failed to save user settings.");
+    if (error) {
+      console.error("[Database-error] saveUserSettings: Error for userId:", userId, error);
+      throw new Error(`Failed to save user settings: ${error.message}`);
+    }
+    console.log("[Database] saveUserSettings: Successfully saved settings for userId:", userId);
+  } catch (err) {
+    console.error("[Database-error] saveUserSettings: Exception for userId:", userId, err);
+    throw err;
   }
 }
 
 export async function getUserSettings(userId: string): Promise<UserSettings | null> {
-  const { data, error } = await supabase
-    .from(DB_TABLES.SETTINGS)
-    .select('*')
-    .eq('userId', userId)
-    .single();
+  try {
+    console.log("[Database] getUserSettings: Fetching settings for userId:", userId);
+    const { data, error } = await supabase
+      .from(DB_TABLES.SETTINGS)
+      .select('*')
+      .eq('userId', userId)
+      .single();
 
-  if (error && error.code !== 'PGRST116') {
-    console.error("Error getting user settings:", error.message);
-    throw new Error("Failed to get user settings.");
+    if (error && error.code !== 'PGRST116') {
+      console.error("[Database-error] getUserSettings: Error for userId:", userId, error);
+      throw new Error(`Failed to get user settings: ${error.message}`);
+    }
+
+    if (!data) {
+      console.log("[Database] getUserSettings: No settings found for userId:", userId);
+      return null;
+    }
+
+    console.log("[Database] getUserSettings: Retrieved settings for userId:", userId, data);
+    return {
+      userId: data.userId,
+      slippage: data.slippage,
+      gasPriority: data.gasPriority as UserSettings["gasPriority"],
+    };
+  } catch (err) {
+    console.error("[Database-error] getUserSettings: Exception for userId:", userId, err);
+    throw err;
   }
-
-  if (!data) return null;
-
-  return {
-    userId: data.userId,
-    slippage: data.slippage,
-    gasPriority: data.gasPriority as UserSettings["gasPriority"],
-  };
 }
 
 // Transaction operations

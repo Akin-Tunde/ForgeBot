@@ -1,3 +1,5 @@
+//src/lib/encryption.ts
+
 import CryptoJS from "crypto-js";
 import { ENCRYPTION_KEY } from "../utils/constants";
 

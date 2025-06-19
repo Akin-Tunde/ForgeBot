@@ -58,14 +58,14 @@ export const balanceHandler = {
 
       const buttons = [
         [
-          { label: "📈 View History", callback: "/history" },
-          { label: "📥 Deposit", callback: "/deposit" },
+          { label: "📈 View History", callback: "check_history" },
+          { label: "📥 Deposit", callback: "deposit" },
         ],
         [
-          { label: "💱 Buy Token", callback: "/buy" },
-          { label: "💱 Sell Token", callback: "/sell" },
+          { label: "💱 Buy Token", callback: "buy_token" },
+          { label: "💱 Sell Token", callback: "sell_sell" },
         ],
-        [{ label: "📤 Withdraw", callback: "/withdraw" }],
+        [{ label: "📤 Withdraw", callback: "withdraw" }],
       ];
 
       return {

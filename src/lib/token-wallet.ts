@@ -9,7 +9,7 @@ import {
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { encrypt, decrypt } from "./encryption";
+import { encrypt, decrypt, verifyEncryptionKey } from "./encryption";
 import { saveWallet, getWalletByUserId } from "./database";
 import {
   WalletData,
@@ -127,8 +127,20 @@ export function getAccount(walletData: WalletData): Account {
 /**
  * Get private key from wallet data
  */
-export function getPrivateKey(walletData: WalletData): string {
-  return decrypt(walletData.encryptedPrivateKey);
+export function getPrivateKey(wallet: WalletData): string {
+  try {
+    if (!verifyEncryptionKey()) {
+      throw new Error("Encryption key not configured");
+    }
+    const privateKey = decrypt(wallet.encryptedPrivateKey);
+    if (!isValidPrivateKey(privateKey)) {
+      throw new Error("Decrypted private key is invalid");
+    }
+    return `0x${privateKey}`;
+  } catch (error) {
+    console.error("Error decrypting private key:", error);
+    throw new Error("Failed to retrieve private key");
+  }
 }
 
 /**
