@@ -9,7 +9,6 @@ import { CommandContext, SessionData } from "./src/types/commands";
 import { verifyFarcasterSignature } from "./src/lib/farcaster";
 import { getWallet } from "./src/lib/token-wallet"; // Import getWallet
 
-
 // Import commands
 import { startHandler, helpHandler } from "./src/commands/start-help";
 import { walletHandler, createHandler } from "./src/commands/wallet";
@@ -51,6 +50,7 @@ import {
   handleWithdrawAmount,
   handleWithdrawConfirmation,
 } from "./src/commands/withdraw";
+import { isValidAddress } from "./src/utils/validators";
 
 // Extend express-session to include SessionData
 declare module "express-session" {
@@ -58,12 +58,11 @@ declare module "express-session" {
     userId: string;
     currentAction?: string;
     tempData: Record<string, any>;
-    settings: { slippage: number; 
-    gasPriority: string };
+    settings: { slippage: number; gasPriority: string };
     walletAddress?: string;
     fid?: string;
-  username?: string; // Added
-  displayName?: string; // Added
+    username?: string; // Added
+    displayName?: string; // Added
   }
 }
 
@@ -102,7 +101,6 @@ app.use(
   })
 );
 
-
 // Middleware
 app.use(express.json());
 app.use(
@@ -116,7 +114,6 @@ app.use(
 app.get("/", (req, res) => {
   res.send("🔧 ForgeBot backend is running.");
 });
-
 
 // Farcaster authentication middleware
 
@@ -133,7 +130,9 @@ const authenticateFarcaster = (
   console.log("authenticateFarcaster: displayName =", displayName);
 
   if (!fid) {
-    console.log("authenticateFarcaster: No FID provided, skipping authentication");
+    console.log(
+      "authenticateFarcaster: No FID provided, skipping authentication"
+    );
     return next(); // Proceed without setting session data
   }
 
@@ -142,10 +141,19 @@ const authenticateFarcaster = (
   req.session.fid = fid.toString();
   req.session.username = username || undefined; // Store undefined if not provided
   req.session.displayName = displayName || undefined;
-  console.log("authenticateFarcaster: Set session.userId =", req.session.userId);
+  console.log(
+    "authenticateFarcaster: Set session.userId =",
+    req.session.userId
+  );
   console.log("authenticateFarcaster: Set session.fid =", req.session.fid);
-  console.log("authenticateFarcaster: Set session.username =", req.session.username);
-  console.log("authenticateFarcaster: Set session.displayName =", req.session.displayName);
+  console.log(
+    "authenticateFarcaster: Set session.username =",
+    req.session.username
+  );
+  console.log(
+    "authenticateFarcaster: Set session.displayName =",
+    req.session.displayName
+  );
 
   // Explicitly save the session
   req.session.save((err) => {
@@ -162,7 +170,12 @@ const ensureSessionData = (
   res: Response,
   next: NextFunction
 ): void => {
-  console.log("ensureSessionData: req.session.userId =", req.session.userId, "req.body.fid =", req.body.fid);
+  console.log(
+    "ensureSessionData: req.session.userId =",
+    req.session.userId,
+    "req.body.fid =",
+    req.body.fid
+  );
   if (!req.session.userId && !req.body.fid) {
     req.session.userId = `guest_${Date.now()}`;
     console.log("ensureSessionData: Set guest userId =", req.session.userId);
@@ -174,7 +187,6 @@ const ensureSessionData = (
   }
   next();
 };
-
 
 // API Routes
 app.post(
@@ -608,37 +620,44 @@ app.post(
         });
         break;
       default:
-        result = {
-          response:
-            "🤖 Hello! Here are some things you can do:\n\n" +
-            "/wallet - View your wallet\n" +
-            "/balance - Check your balances\n" +
-            "/buy - Buy tokens with ETH\n" +
-            "/sell - Sell tokens for ETH\n" +
-            "/deposit - Get your deposit address\n" +
-            "/withdraw - Withdraw ETH to another address\n" +
-            "/settings - Change trading settings\n" +
-            "/help - Show this help message",
-          buttons: [
-            [
-              { label: "💰 Balance", callback: "check_balance" },
-              { label: "💱 Buy/Sell", callback: "buy_token" },
+        if (isValidAddress(args)) {
+          req.session.currentAction = "buy_custom_token"; // Prompt for buy flow
+          result = await handleCustomTokenInput({
+            session: req.session as SessionData,
+            wallet,
+            args,
+          });
+        } else {
+          result = {
+            response:
+              "🤖 Hello! Here are some things you can do:\n\n" +
+              "/wallet - View your wallet\n" +
+              "/balance - Check your balances\n" +
+              "/buy - Buy tokens with ETH\n" +
+              "/sell - Sell tokens for ETH\n" +
+              "/deposit - Get your deposit address\n" +
+              "/withdraw - Withdraw ETH to another address\n" +
+              "/settings - Change trading settings\n" +
+              "/help - Show this help message",
+            buttons: [
+              [
+                { label: "💰 Balance", callback: "check_balance" },
+                { label: "💱 Buy/Sell", callback: "buy_token" },
+              ],
+              [
+                { label: "📥 Deposit", callback: "deposit" },
+                { label: "📤 Withdraw", callback: "withdraw" },
+              ],
             ],
-            [
-              { label: "📥 Deposit", callback: "deposit" },
-              { label: "📤 Withdraw", callback: "withdraw" },
-            ],
-          ],
-        };
+          };
+        }
     }
     res.json(result);
     return;
   }
 );
 
-
 // index.ts (partial)
-
 
 app.post(
   "/api/chat/command",
@@ -759,13 +778,17 @@ app.post(
       : undefined;
     let result;
 
-    console.log(`Received callback: ${callback}, args: ${args}, currentAction: ${session.currentAction}, userId: ${session.userId}, walletAddress: ${session.walletAddress}, sessionId: ${req.sessionID}`);
+    console.log(
+      `Received callback: ${callback}, args: ${args}, currentAction: ${session.currentAction}, userId: ${session.userId}, walletAddress: ${session.walletAddress}, sessionId: ${req.sessionID}`
+    );
 
     if (callback === "import_wallet" && args) {
       console.log("Processing private key input with args:", args);
       // Ensure currentAction is set
       if (session.currentAction !== "import_wallet") {
-        console.warn("currentAction was undefined or incorrect, setting to import_wallet");
+        console.warn(
+          "currentAction was undefined or incorrect, setting to import_wallet"
+        );
         session.currentAction = "import_wallet";
       }
       result = await handlePrivateKeyInput({
@@ -817,7 +840,8 @@ app.post(
       result = await createHandler.handler({ session });
     } else if (callback === "cancel_create_wallet") {
       result = {
-        response: "Operation cancelled. Your existing wallet remains unchanged.",
+        response:
+          "Operation cancelled. Your existing wallet remains unchanged.",
       };
     } else if (callback === "confirm_import_wallet") {
       session.walletAddress = undefined;
@@ -826,7 +850,8 @@ app.post(
     } else if (callback === "cancel_import_wallet") {
       session.currentAction = undefined;
       result = {
-        response: "Operation cancelled. Your existing wallet remains unchanged.",
+        response:
+          "Operation cancelled. Your existing wallet remains unchanged.",
       };
     } else {
       console.log("Unknown callback received:", callback);

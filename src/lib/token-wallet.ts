@@ -26,7 +26,7 @@ import {
   MAX_UINT256,
 } from "../utils/constants";
 import { isValidPrivateKey } from "../utils/validators";
-
+import { isValidAddress } from "../utils/validators";
 
 // *** WALLET FUNCTIONS *** //
 
@@ -108,7 +108,6 @@ export async function importWallet(
     throw new Error("Invalid private key or database error");
   }
 }
-
 
 /**
  * Get wallet for a user
@@ -309,6 +308,10 @@ export async function getTokenInfo(
   tokenAddress: Address
 ): Promise<TokenInfo | null> {
   try {
+    if (!isValidAddress(tokenAddress)) {
+      console.log("Invalid token address:", tokenAddress);
+      return null;
+    }
     // Handle native ETH specially
     if (tokenAddress.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()) {
       return {
