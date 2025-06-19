@@ -28,6 +28,7 @@ function ChatWindow() {
     command: "",
     time: 0,
   });
+  const currentAction = useRef<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -97,7 +98,7 @@ function ChatWindow() {
     }
     lastCommand.current = { fid, command, time: Date.now() };
 
-    console.log("sendCommand: fid =", fid, "username =", username, "displayName =", displayName, "command =", command, "args =", args, "isCallback =", isCallback);
+    console.log("sendCommand: fid =", fid, "username =", username, "displayName =", displayName, "command =", command, "args =", args, "isCallback =", isCallback, "currentAction =", currentAction.current);
 
     if (!fid) {
       setMessages([
@@ -117,11 +118,18 @@ function ChatWindow() {
         displayName,
       };
 
-      let endpoint = "/api/chat/command";
-      if (args || isCallback) {
+      let endpoint = "/api/command";
+      // Check if expecting input for specific actions
+      const lastMessage = messages[messages.length - 1]?.text || "";
+      if (
+        isCallback ||
+        lastMessage.includes("Please send the ERC-20 token address") ||
+        lastMessage.includes("Please enter the amount of ETH") ||
+        lastMessage.includes("Please send your private key")
+      ) {
         endpoint = "/api/callback";
-        payload.callback = command;
-        if (args) payload.args = args;
+        payload.callback = isCallback ? command : null;
+        payload.args = args || (isCallback ? undefined : command);
       } else {
         payload.command = command;
       }
@@ -134,6 +142,16 @@ function ChatWindow() {
         ...prev,
         { text: data.response, buttons: data.buttons },
       ]);
+      // Update currentAction based on response or context
+      if (data.response.includes("Please send the ERC-20 token address")) {
+        currentAction.current = "buy_custom_token";
+      } else if (data.response.includes("Please enter the amount of ETH")) {
+        currentAction.current = "buy_amount";
+      } else if (data.response.includes("Please send your private key")) {
+        currentAction.current = "import_wallet";
+      } else {
+        currentAction.current = null;
+      }
     } catch (error) {
       console.error("Error processing command:", error);
       if (axios.isAxiosError(error)) {
@@ -161,14 +179,7 @@ function ChatWindow() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim()) {
-      // Check if last message prompts for private key
-      if (
-        messages[messages.length - 1]?.text.includes("Please send your private key")
-      ) {
-        sendCommand("import_wallet", input.trim());
-      } else {
-        sendCommand(input.trim());
-      }
+      sendCommand(input.trim());
       setInput("");
     }
   };

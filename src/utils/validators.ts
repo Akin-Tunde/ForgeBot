@@ -7,14 +7,7 @@ export function isValidAddress(address: string): boolean {
   return isAddress(address);
 }
 
-/**
- * Validate if a string is a valid private key
- */
-//export function isValidPrivateKey(privateKey: string): boolean {
-  // Private key should be 64 hex characters with or without 0x prefix
-  //const hexRegex = /^(0x)?[0-9a-fA-F]{64}$/;
-  //return hexRegex.test(privateKey);
-//}
+
 
 // src/utils/validators.ts
 export function isValidPrivateKey(privateKey: string): boolean {

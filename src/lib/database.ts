@@ -1,14 +1,12 @@
 // src/lib/database.ts
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import session from 'express-session';
 import { WalletData } from "../types/wallet";
 import { UserSettings } from "../types/config";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, DB_TABLES } from "../utils/constants";
 
-const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-// Define types for database rows
 type UserRow = {
   userId: string;
   fid: string;
@@ -45,12 +43,28 @@ type TransactionRow = {
   timestamp: number;
 };
 
-// Initialize tables (Supabase handles schema, so this function will be simplified)
-export function initDatabase(): void {
-  console.log("Supabase database initialization handled externally. Ensure tables are created in your Supabase project.");
+export async function initDatabase(): Promise<void> {
+  console.log("[Database] Initializing Supabase database...");
+  try {
+    // Verify sessions table exists
+    const { error } = await supabase
+      .from('sessions')
+      .select('sid')
+      .limit(1);
+    if (error && error.code === 'PGRST204') {
+      console.error("[Database] Sessions table does not exist. Please create it with schema: sid (text, primary key), session (jsonb), expires (timestamptz)");
+      throw new Error("Sessions table not found");
+    } else if (error) {
+      console.error("[Database] Error checking sessions table:", error.message, error.details);
+      throw new Error(`Failed to verify sessions table: ${error.message}`);
+    }
+    console.log("[Database] Sessions table verified successfully");
+  } catch (err) {
+    console.error("[Database] Initialization failed:", err);
+    throw err;
+  }
 }
 
-// Supabase Session Store
 export class SupabaseSessionStore extends session.Store {
   private tableName: string;
   private ttl: number;
@@ -60,23 +74,26 @@ export class SupabaseSessionStore extends session.Store {
     this.tableName = options.tableName;
     this.ttl = options.ttl;
   }
-async get(sid: string, callback: (err: any, session?: any) => void) {
+
+  async get(sid: string, callback: (err: any, session?: any) => void) {
     try {
+      console.log("[SessionStore] Getting session for sid:", sid);
       const { data, error } = await this.supabase
         .from(this.tableName)
         .select("session, expires")
         .eq("sid", sid)
         .single();
       if (error) {
-        console.error("[SessionStore] Get error for sid:", sid, error);
+        console.error("[SessionStore] Get error for sid:", sid, "message:", error.message, "details:", error.details);
         return callback(error);
       }
       if (!data || new Date(data.expires) < new Date()) {
         console.log("[SessionStore] No session or expired for sid:", sid);
         return callback(null, null);
       }
-      console.log("[SessionStore] Retrieved session for sid:", sid);
-      callback(null, JSON.parse(data.session));
+      const sessionData = JSON.parse(data.session);
+      console.log("[SessionStore] Retrieved session for sid:", sid, "session:", sessionData);
+      callback(null, sessionData);
     } catch (err) {
       console.error("[SessionStore] Get exception for sid:", sid, err);
       callback(err);
@@ -86,16 +103,18 @@ async get(sid: string, callback: (err: any, session?: any) => void) {
   async set(sid: string, session: any, callback: (err?: any) => void) {
     try {
       const expires = new Date(Date.now() + this.ttl * 1000).toISOString();
-      console.log("[SessionStore] Setting session for sid:", sid, "expires:", expires);
+      console.log("[SessionStore] Setting session for sid:", sid, "expires:", expires, "session:", session);
       const { error } = await this.supabase
         .from(this.tableName)
         .upsert({
           sid,
           session: JSON.stringify(session),
           expires,
+        }, {
+          onConflict: 'sid'
         });
       if (error) {
-        console.error("[SessionStore] Set error for sid:", sid, error);
+        console.error("[SessionStore] Set error for sid:", sid, "message:", error.message, "details:", error.details);
         throw error;
       }
       console.log("[SessionStore] Session set successfully for sid:", sid);
@@ -114,7 +133,7 @@ async get(sid: string, callback: (err: any, session?: any) => void) {
         .delete()
         .eq("sid", sid);
       if (error) {
-        console.error("[SessionStore] Destroy error for sid:", sid, error);
+        console.error("[SessionStore] Destroy error for sid:", sid, "message:", error.message, "details:", error.details);
         throw error;
       }
       console.log("[SessionStore] Session destroyed for sid:", sid);
@@ -131,8 +150,6 @@ export const sessionStore = new SupabaseSessionStore(supabase, {
   ttl: 24 * 60 * 60, // 24 hours
 });
 
-
-// User operations
 export async function createUser(
   userId: string,
   fid: string,
@@ -140,7 +157,7 @@ export async function createUser(
   firstName?: string,
   lastName?: string
 ): Promise<void> {
-   console.log("createUser: Creating user with fid =", fid, "userId =", userId);
+  console.log("createUser: Creating user with fid =", fid, "userId =", userId);
   const { error } = await supabase
     .from(DB_TABLES.USERS)
     .insert({
@@ -166,7 +183,7 @@ export async function getUserByfid(fid: string): Promise<UserRow | undefined> {
     .eq('fid', fid)
     .single();
 
-  if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
+  if (error && error.code !== 'PGRST116') {
     console.error("Error getting user by Telegram ID:", error.message);
     throw new Error("Failed to get user by Telegram ID.");
   }
@@ -174,7 +191,6 @@ export async function getUserByfid(fid: string): Promise<UserRow | undefined> {
   return data as UserRow | undefined;
 }
 
-// Wallet operations
 export async function saveWallet(walletData: WalletData, userId: string): Promise<void> {
   const { error } = await supabase
     .from(DB_TABLES.WALLETS)
@@ -235,8 +251,6 @@ export async function deleteWallet(address: string): Promise<void> {
   }
 }
 
-// Settings operations
-// src/lib/database.ts (only modified functions)
 export async function saveUserSettings(
   userId: string,
   settings: Omit<UserSettings, "userId">
@@ -294,7 +308,6 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
   }
 }
 
-// Transaction operations
 export async function saveTransaction(
   txHash: string,
   userId: string,
@@ -372,9 +385,6 @@ export async function getUniqueTokensByUserId(userId: string): Promise<string[]>
   return Array.from(new Set(allTokens)).filter(token => token !== null) as string[];
 }
 
-// Close database connection (not needed for Supabase)
 export function closeDatabase(): void {
   console.log("Supabase connection managed automatically.");
 }
-
-

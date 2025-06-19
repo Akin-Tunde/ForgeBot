@@ -28,11 +28,12 @@ import {
 import { isValidPrivateKey } from "../utils/validators";
 import { isValidAddress } from "../utils/validators";
 
+import {client as publicClient} from "../utils/constants";
 // *** WALLET FUNCTIONS *** //
 
 /**
  * Create a wallet client for the given private key
- */
+ 
 function createClient(account: Account): WalletClient {
   return createWalletClient({
     account,
@@ -40,17 +41,30 @@ function createClient(account: Account): WalletClient {
     transport: http(QUICKNODE_RPC_URL),
   });
 }
+*/
 
+function createClient(account: Account): WalletClient {
+  return createWalletClient({
+    account,
+    chain: base,
+    transport: http(`https://base-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`),
+  });
+}
+
+export function createPublicClientForBase() {
+  return publicClient;
+}
+ 
 /**
  * Create a public client for Base network
- */
+
 export function createPublicClientForBase() {
   return createPublicClient({
     chain: base,
     transport: http(QUICKNODE_RPC_URL),
   });
 }
-
+ */
 /**
  * Generate a new wallet
  */
@@ -147,9 +161,16 @@ export function getPrivateKey(wallet: WalletData): string {
  * Get ETH balance for an address
  */
 export async function getEthBalance(address: Address): Promise<string> {
-  const publicClient = createPublicClientForBase();
-  const balance = await publicClient.getBalance({ address });
-  return balance.toString();
+  try {
+    console.log("[getEthBalance] Fetching ETH balance for address:", address);
+    const balance = await publicClient.getBalance({ address });
+    const balanceWei = balance.toString();
+    console.log("[getEthBalance] Success: address =", address, "balance =", balanceWei, "wei");
+    return balanceWei;
+  } catch (error) {
+    console.error("[getEthBalance] Error fetching ETH balance for address:", address, error);
+    return "0";
+  }
 }
 
 /**
@@ -320,12 +341,14 @@ export async function getTokenInfo(
   tokenAddress: Address
 ): Promise<TokenInfo | null> {
   try {
+    console.log("[getTokenInfo] Validating address:", tokenAddress);
     if (!isValidAddress(tokenAddress)) {
-      console.log("Invalid token address:", tokenAddress);
+      console.error("[getTokenInfo] Invalid token address:", tokenAddress);
       return null;
     }
-    // Handle native ETH specially
+
     if (tokenAddress.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()) {
+      console.log("[getTokenInfo] Returning native ETH info");
       return {
         address: NATIVE_TOKEN_ADDRESS,
         symbol: "ETH",
@@ -335,29 +358,35 @@ export async function getTokenInfo(
     }
 
     const publicClient = createPublicClientForBase();
+    console.log("[getTokenInfo] Fetching token data for:", tokenAddress);
 
-    // Make parallel requests for token data
-    const [symbol, decimals] = await Promise.all([
-      publicClient.readContract({
-        address: tokenAddress,
-        abi: erc20Abi,
-        functionName: "symbol",
-      }),
-      publicClient.readContract({
-        address: tokenAddress,
-        abi: erc20Abi,
-        functionName: "decimals",
-      }),
-    ]);
+    try {
+      const [symbol, decimals] = await Promise.all([
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: erc20Abi,
+          functionName: "symbol",
+        }).catch((e) => { throw new Error(`Failed to fetch symbol: ${e.message}`); }),
+        publicClient.readContract({
+          address: tokenAddress,
+          abi: erc20Abi,
+          functionName: "decimals",
+        }).catch((e) => { throw new Error(`Failed to fetch decimals: ${e.message}`); }),
+      ]);
 
-    return {
-      address: tokenAddress,
-      symbol: symbol as string,
-      decimals: Number(decimals),
-      balance: "0",
-    };
+      console.log("[getTokenInfo] Success: symbol =", symbol, "decimals =", decimals);
+      return {
+        address: tokenAddress,
+        symbol: symbol as string,
+        decimals: Number(decimals),
+        balance: "0",
+      };
+    } catch (contractError) {
+      console.error("[getTokenInfo] Contract call failed for address:", tokenAddress, contractError);
+      return null;
+    }
   } catch (error) {
-    console.error("Error fetching token info:", error);
+    console.error("[getTokenInfo] Error fetching token info for address:", tokenAddress, error);
     return null;
   }
 }
@@ -501,3 +530,5 @@ export async function getTokenAllowance(
     return "0";
   }
 }
+
+
