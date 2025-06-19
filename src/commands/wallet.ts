@@ -1,4 +1,4 @@
-// src/handlers/wallet.ts
+// src/commands/wallet.ts
 import { CommandContext, CommandHandler } from "../types/commands";
 import { getWallet, generateWallet } from "../lib/token-wallet";
 import { verifyEncryptionKey } from "../lib/encryption";
@@ -42,10 +42,10 @@ export const walletHandler: CommandHandler = {
         buttons: [
           [{ label: "🔑 Export Key", callback: "export_key" }],
           [
-            { label: "💰 Check Balance", callback: "check_balance" },
-            { label: "📥 Deposit", callback: "deposit" },
+            { label: "💰 Check Balance", callback: "/balance" },
+            { label: "📥 Deposit", callback: "/deposit" },
           ],
-          [{ label: "📤 Withdraw", callback: "withdraw" }],
+          [{ label: "📤 Withdraw", callback: "/withdraw" }],
         ],
       };
     } catch (error) {

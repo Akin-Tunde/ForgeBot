@@ -1,4 +1,4 @@
-// src/handlers/start.ts
+// src/commands/start-help.ts
 import { CommandHandler, CommandContext } from "../types/commands";
 import {
   createUser,
@@ -79,16 +79,16 @@ export const startHandler: CommandHandler = {
         response: `🤖 Welcome back to Base MEV-Protected Trading Bot, ${existingUser.username || existingUser.firstName || "User"}!\n\nWhat would you like to do today?`,
         buttons: [
           [
-            { label: "💰 Balance", callback: "check_balance" },
-            { label: "📊 History", callback: "check_history" },
+            { label: "💰 Balance", callback: "/balance" },
+            { label: "📊 History", callback: "/history" },
           ],
           [
-            { label: "💱 Buy Token", callback: "buy_token" },
-            { label: "💱 Sell Token", callback: "sell_token" },
+            { label: "💱 Buy Token", callback: "/buy" },
+            { label: "💱 Sell Token", callback: "/sell" },
           ],
           [
-            { label: "⚙️ Settings", callback: "open_settings" },
-            { label: "📋 Help", callback: "help" },
+            { label: "⚙️ Settings", callback: "/settings" },
+            { label: "📋 Help", callback: "/help" },
           ],
         ],
       };
