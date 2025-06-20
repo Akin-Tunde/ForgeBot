@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import session from "express-session";
 import dotenv from "dotenv";
 import cors from "cors";
+import { SupabaseSessionStore, sessionStore } from "./src/lib/database"; 
 
 import { initDatabase, closeDatabase } from "./src/lib/database";
 import { verifyEncryptionKey } from "./src/lib/encryption";
@@ -104,26 +105,57 @@ const app = express();
 // ✅ Use CORS middleware BEFORE anything else
 app.use(
   cors({
-    origin: [
+    origin: (origin, callback) => {
+      const allowedOrigins = [
       "https://mini-testf.netlify.app",
       "http://localhost:3000",
       "http://localhost:5173", // Add this if your frontend runs on port 5173
-    ],
-    credentials: true,
+    ]
+    if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, origin || "*");
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, // Allow cookies to be sent
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 // Middleware
 app.use(express.json());
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET,
+    store: sessionStore,
+    secret: process.env.SESSION_SECRET!,
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: process.env.NODE_ENV === "production",
-      maxAge: 24 * 60 * 60 * 1000, },
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      httpOnly: true,
+     secure: process.env.NODE_ENV === "production" ? true : false, 
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+       path: "/",
+      domain: process.env.NODE_ENV === "production" ? undefined : "localhost",
+    },
   })
 );
+
+// Log Set-Cookie headers for debugging
+app.use((req, res, next) => {
+  const originalSend = res.send;
+  res.send = function (body) {
+    const setCookie = res.getHeader("Set-Cookie");
+    if (setCookie) {
+      console.log("[Response] Set-Cookie:", setCookie, "for path:", req.path);
+    }
+    return originalSend.call(this, body);
+  };
+  next();
+});
+
 app.get("/", (req, res) => {
   res.send("🔧 ForgeBot backend is running.");
 });
@@ -768,29 +800,40 @@ app.post(
       : undefined;
     let result;
 
-    console.log(`[Callback] Received: callback=${callback}, args=${JSON.stringify(args)}, currentAction=${session.currentAction}, userId=${session.userId}, walletAddress=${session.walletAddress}, sessionId=${req.sessionID}, wallet=${wallet ? 'exists' : 'undefined'}`);
+    console.log(`[Callback] Received: callback=${callback}, args=${JSON.stringify(args)}, currentAction=${session.currentAction}, userId=${session.userId}, walletAddress=${session.walletAddress}, sessionId=${req.sessionID}, wallet=${wallet ? 'exists' : 'undefined'}, tempData=${JSON.stringify(session.tempData)}, cookies=${JSON.stringify(req.cookies)}`);
 
     try {
-      if (callback === null && args && isValidAddress(args)) {
-        console.warn("[Callback] Unexpected null callback with address args:", args, "currentAction:", session.currentAction);
-        if (session.currentAction === "buy_custom_token") {
-          console.log("[Callback] Handling custom token input:", args, "for userId:", session.userId);
-          result = await handleCustomTokenInput({ session, args, wallet });
-        } else {
-          console.warn("[Callback] Resetting currentAction to buy_custom_token for address input:", args);
-          session.currentAction = "buy_custom_token";
-          await session.save();
-          console.log("[Callback] Session saved: userId =", session.userId, "currentAction =", session.currentAction);
-          result = await handleCustomTokenInput({ session, args, wallet });
-        }
-      } else if (session.currentAction === "buy_amount" && args) {
+      // Early validation for session state
+      if (!session.userId) {
+        console.error("[Callback] No userId in session, fid:", req.body.fid, "sessionId:", req.sessionID);
+        result = { response: "❌ Session expired. Please restart with /start." };
+      } else if (session.currentAction === "buy_amount" && args && (callback === null || callback === undefined)) {
         console.log("[Callback] Handling buy amount input:", args, "for userId:", session.userId);
-        result = await handleBuyAmountInput({ session, args, wallet });
+        if (!session.tempData || !session.tempData.toToken || !session.tempData.walletAddress || !session.tempData.balance) {
+          console.warn("[Callback] Invalid session.tempData for buy_amount, userId:", session.userId, "tempData:", session.tempData, "sessionId:", req.sessionID);
+          session.currentAction = undefined;
+          session.tempData = {};
+          await session.save();
+          result = { response: "❌ Invalid session state. Please restart with /buy." };
+        } else {
+          result = await handleBuyAmountInput({ session, args, wallet });
+        }
       } else if (session.currentAction === "buy_confirm" && (callback === "confirm_yes" || callback === "confirm_no")) {
         console.log("[Callback] Handling buy confirmation:", callback, "for userId:", session.userId);
         result = await handleBuyConfirmation({ session, wallet }, callback === "confirm_yes");
         session.currentAction = undefined;
         await session.save();
+      } else if (session.currentAction === "buy_custom_token" && args && isValidAddress(args)) {
+        console.log("[Callback] Handling custom token input:", args, "for userId:", session.userId);
+        result = await handleCustomTokenInput({ session, args, wallet });
+      } else if (callback === null && args && isValidAddress(args)) {
+        console.warn("[Callback] Unexpected null callback with address args:", args, "currentAction:", session.currentAction);
+        if (!session.currentAction || session.currentAction === "buy_token") {
+          console.log("[Callback] Setting currentAction to buy_custom_token for address input:", args);
+          session.currentAction = "buy_custom_token";
+          await session.save();
+        }
+        result = await handleCustomTokenInput({ session, args, wallet });
       } else if (session.currentAction === "export_wallet" && (callback === "confirm_yes" || callback === "Confirm" || callback === "confirm_no")) {
         console.log(`[Callback] Handling export confirmation: ${callback}, userId=${session.userId}`);
         result = await handleExportConfirmation(
@@ -803,7 +846,7 @@ app.post(
         console.warn(`[Callback] Fallback handling confirmation: ${callback}, userId=${session.userId}, currentAction=${session.currentAction}`);
         result = await handleExportConfirmation(
           { session, wallet },
-          callback === "confirm_yes" || callback === "Confirm"
+          callback === "confirm_yes" || callback === "Confirm" || callback === "confirm_no"
         );
         session.currentAction = undefined;
         await session.save();
@@ -824,14 +867,6 @@ app.post(
       } else if (["USDC", "DAI", "WBTC", "custom"].includes(callback)) {
         console.log("[Callback] Handling token selection:", callback, "for userId:", session.userId);
         result = await handleTokenSelection({ session, args: callback, wallet });
-      } else if (session.currentAction === "buy_custom_token" && args) {
-        console.log("[Callback] Handling custom token input:", args, "for userId:", session.userId);
-        try {
-          result = await handleCustomTokenInput({ session, args, wallet });
-        } catch (error) {
-          console.error("[Callback] Error in handleCustomTokenInput for userId:", session.userId, "args:", args, error);
-          result = { response: "❌ Failed to process token address. Please check the address and try again." };
-        }
       } else if (callback === "import_wallet" && args) {
         console.log("[Callback] Processing private key input with args:", args);
         if (session.currentAction !== "import_wallet") {
@@ -886,16 +921,30 @@ app.post(
           response: "Operation cancelled. Your existing wallet remains unchanged.",
         };
       } else {
-        console.error("[Callback] Unknown callback:", callback, "args:", args, "currentAction:", session.currentAction);
-        result = { response: "❌ Unknown callback or invalid session state. Please restart with /buy." };
+        console.error("[Callback] Unknown callback:", callback, "args:", args, "currentAction:", session.currentAction, "sessionId:", req.sessionID);
+        // Fallback: Treat numeric args as buy_amount if numeric
+        if (args && !isNaN(parseFloat(args))) {
+          console.warn("[Callback] Fallback: Treating args as buy_amount input:", args, "for userId:", session.userId);
+          if (session.currentAction !== "buy_amount" || !session.tempData || !session.tempData.toToken || !session.tempData.walletAddress || !session.tempData.balance) {
+            console.warn("[Callback] Invalid session state in fallback, userId:", session.userId, "currentAction:", session.currentAction, "tempData:", session.tempData);
+            session.currentAction = undefined;
+            session.tempData = {};
+            await session.save();
+            result = { response: "❌ Invalid session state. Please restart with /buy." };
+          } else {
+            result = await handleBuyAmountInput({ session, args, wallet });
+          }
+        } else {
+          result = { response: "❌ Unknown callback or invalid session state. Please restart with /buy." };
+        }
       }
     } catch (error) {
-      console.error("[Callback] Error processing callback:", callback, "args:", args, error);
+      console.error("[Callback] Error processing callback:", callback, "args:", args, "error:", error, "sessionId:", req.sessionID);
       result = { response: "❌ An error occurred. Please try again later." };
     }
 
     await session.save();
-    console.log("[Callback] Session saved for userId:", session.userId);
+    console.log("[Callback] Session saved for userId:", session.userId, "sessionId:", req.sessionID);
     res.json(result);
     return;
   }

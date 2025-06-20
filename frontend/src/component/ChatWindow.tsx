@@ -134,20 +134,28 @@ function ChatWindow() {
         payload.command = command;
       }
 
-      const { data } = await axios.post(
-        `https://forgeback-production.up.railway.app${endpoint}`,
-        payload
-      );
+      const apiUrl = process.env.NODE_ENV === "production"
+        ? "https://forgeback-production.up.railway.app"
+        : "http://localhost:3000"; // Adjust port if needed
+      console.log("Sending request to:", `${apiUrl}${endpoint}`, "payload:", payload);
+      const response = await axios.post(`${apiUrl}${endpoint}`, payload, {
+        withCredentials: true,
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+      });
+      console.log("Response headers:", response.headers, "Set-Cookie:", response.headers["set-cookie"]);
       setMessages((prev) => [
         ...prev,
-        { text: data.response, buttons: data.buttons },
+        { text: response.data.response, buttons: response.data.buttons },
       ]);
       // Update currentAction based on response or context
-      if (data.response.includes("Please send the ERC-20 token address")) {
+      if (response.data.response.includes("Please send the ERC-20 token address")) {
         currentAction.current = "buy_custom_token";
-      } else if (data.response.includes("Please enter the amount of ETH")) {
+      } else if (response.data.response.includes("Please enter the amount of ETH")) {
         currentAction.current = "buy_amount";
-      } else if (data.response.includes("Please send your private key")) {
+      } else if (response.data.response.includes("Please send your private key")) {
         currentAction.current = "import_wallet";
       } else {
         currentAction.current = null;
@@ -162,6 +170,7 @@ function ChatWindow() {
             ? {
                 status: error.response.status,
                 data: error.response.data,
+                headers: error.response.headers,
               }
             : null,
         });
