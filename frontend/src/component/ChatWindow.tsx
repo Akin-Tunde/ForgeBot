@@ -137,7 +137,7 @@ function ChatWindow() {
 
   return (
    
-    <div className="flex flex-col h-screen w-screen max-w-full bg-gray-100 p-2 sm:p-4 font-sans text-sm">
+    <div className="text-black flex flex-col h-screen w-screen max-w-full bg-gray-100 p-2 sm:p-4 font-sans text-sm">
       
       <div className="flex-1 overflow-y-auto mb-4 bg-white rounded-lg p-2 shadow">
         {messages.map((msg, i) => (
