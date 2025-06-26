@@ -47,8 +47,8 @@ export const startHandler: CommandHandler = {
           response: GETTING_STARTED_MESSAGE,
           buttons: [
             [
-              { label: "Create Wallet", callback: "/create" },
-              { label: "Import Wallet", callback: "/import" },
+              { label: "Create Wallet", callback: "create_wallet" },
+              { label: "Import Wallet", callback: "import_wallet" },
             ],
           ],
         };
@@ -63,8 +63,8 @@ export const startHandler: CommandHandler = {
           response: GETTING_STARTED_MESSAGE,
           buttons: [
             [
-              { label: "Create Wallet", callback: "/create" },
-              { label: "Import Wallet", callback: "/import" },
+              { label: "Create Wallet", callback: "create_wallet" },
+              { label: "Import Wallet", callback: "import_wallet" },
             ],
           ],
         };
@@ -90,7 +90,7 @@ export const startHandler: CommandHandler = {
             { label: "⚙️ Settings", callback: "open_settings" },
             { label: "📋 Help", callback: "help" },
           ],
-        ],
+        ], 
       };
     } catch (error) {
       console.error("Error in start command:", error);

@@ -1,5 +1,7 @@
+// FILE: src/lib/swap.ts
+
 import axios from "axios";
-import { Address, formatEther } from "viem";
+import { Address, formatEther, formatUnits } from "viem";
 import {
   OpenOceanErrorResponse,
   QuoteResponse,
@@ -30,23 +32,22 @@ function isErrorResponse(data: any): data is OpenOceanErrorResponse {
  * OpenOcean requires the amount as non-wei value. e.g. for 1.00 ETH, set as 1.
  * OpenOcean requires the gas price as a string and in gwei, not wei
  */
+// --- FIX: Made gasPrice optional by adding a '?' ---
 export async function getQuote(
   inTokenAddress: string,
   outTokenAddress: string,
   amount: string,
-  gasPrice: string
+  gasPrice?: string
 ): Promise<QuoteResponse> {
   try {
-    // Construct URL - QUICKNODE_RPC_URL has `/` at the end in default
     let url = `${QUICKNODE_RPC_URL}addon/${ADDON_ID}/v4/${CHAIN}/quote?inTokenAddress=${inTokenAddress}&outTokenAddress=${outTokenAddress}&amount=${amount}`;
 
+    // This check now correctly handles the optional parameter
     if (gasPrice) {
       url += `&gasPrice=${gasPrice}`;
     }
 
-    // Fetch quote
     const response = await axios.get(url);
-
     const data = response.data;
 
     if (isErrorResponse(data)) {
@@ -66,32 +67,36 @@ export async function getQuote(
 /**
  * Get swap transaction data
  */
+// --- FIX: Made gasPrice, slippage, and account optional by adding '?' ---
 export async function getSwap(
   inTokenAddress: Address,
   outTokenAddress: Address,
   amount: string,
-  gasPrice: string,
-  slippage: string,
-  account: Address
+  gasPrice?: string,
+  slippage?: string,
+  account?: Address
 ): Promise<SwapResponse> {
   try {
-    // Construct URL
     let url =
       `${QUICKNODE_RPC_URL}addon/${ADDON_ID}/v4/${CHAIN}/swap` +
       `?inTokenAddress=${inTokenAddress}` +
       `&outTokenAddress=${outTokenAddress}` +
-      `&amount=${amount}` +
-      `&gasPrice=${gasPrice}` +
-      `&slippage=${slippage}` +
-      `&account=${account}`;
+      `&amount=${amount}`;
 
-    // Optionally add referrer
-    // url += `&referrer=0x...`;
+    // These checks now correctly handle the optional parameters
+    if (gasPrice) {
+      url += `&gasPrice=${gasPrice}`;
+    }
+    if (slippage) {
+      url += `&slippage=${slippage}`;
+    }
+    if (account) {
+      url += `&account=${account}`;
+    }
 
     const response = await axios.get<SwapResponse | OpenOceanErrorResponse>(
       url
     );
-
     const data = response.data;
 
     if (isErrorResponse(data)) {
@@ -112,7 +117,7 @@ export async function getSwap(
   }
 }
 
-// ** GAS ESTIMATION FUNCTIONS ** //
+// ** GAS ESTIMATION FUNCTIONS ** // (No changes needed below this line)
 
 /**
  * Get gas price estimates from Sentio API
@@ -141,7 +146,6 @@ export async function getGasEstimates(): Promise<BlockPrices> {
     return data as BlockPrices;
   } catch (error) {
     console.error("Failed to fetch gas estimates:", error);
-    // Return fallback values if API call fails
     return {
       blockPrices: [
         {
@@ -178,15 +182,11 @@ export async function getGasPriceForPriority(
   priority: "low" | "medium" | "high" = "medium"
 ): Promise<GasPriceInfo> {
   const gasEstimates = await getGasEstimates();
-
   const confidenceLevel = GAS_PRIORITY[priority];
-
-  // Find the estimate with the closest confidence level
   const estimatedPrices = gasEstimates.blockPrices[0].estimatedPrices;
   const estimate =
     estimatedPrices.find((e) => e.confidence === confidenceLevel) ||
     estimatedPrices[0];
-
   return {
     confidence: estimate.confidence,
     price: estimate.price,
@@ -198,6 +198,15 @@ export async function getGasPriceForPriority(
 /**
  * Get gas parameters for transaction
  */
+// FILE: src/lib/swap.ts
+
+// ... other code and imports at the top ...
+// Ensure `client` is imported from `../utils/constants`
+
+/**
+ * Get gas parameters for transaction
+ */
+// --- THIS IS THE NEW, RELIABLE VERSION ---
 export async function getGasParams(
   priority: "low" | "medium" | "high" = "medium"
 ): Promise<{
@@ -205,24 +214,32 @@ export async function getGasParams(
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
 }> {
-  const gasPriceInfo = await getGasPriceForPriority(priority);
-  // OpenOcean requires the gas price as a string and in gwei, not wei
-  const price = gasPriceInfo.price.toString();
-  const maxFeePerGas = gasPriceInfo.maxFeePerGas.toString();
-  const maxPriorityFeePerGas = gasPriceInfo.maxPriorityFeePerGas.toString();
+  try {
+    console.log("[getGasParams] Using viem's estimateFeesPerGas for reliable estimate.");
+    
+    // Use viem's reliable EIP-1559 fee estimator
+    const feeEstimate = await client.estimateFeesPerGas({
+      type: "eip1559"
+    });
 
-  // Convert from gwei to wei
-  // const price = Math.round(gasPriceInfo.price * ).toString();
-  // const maxFeePerGas = Math.round(gasPriceInfo.maxFeePerGas * 1e9).toString();
-  // const maxPriorityFeePerGas = Math.round(
-  //   gasPriceInfo.maxPriorityFeePerGas * 1e9
-  // ).toString();
+    // We will use the more important maxFeePerGas as our 'price' for the OpenOcean API.
+    // The API requires it in Gwei, so we convert from wei to gwei.
+    const priceInGwei = formatUnits(feeEstimate.maxFeePerGas!, 9);
 
-  return {
-    price,
-    maxFeePerGas,
-    maxPriorityFeePerGas,
-  };
+    return {
+      price: priceInGwei, // This is maxFeePerGas in Gwei
+      maxFeePerGas: formatUnits(feeEstimate.maxFeePerGas!, 9),
+      maxPriorityFeePerGas: formatUnits(feeEstimate.maxPriorityFeePerGas!, 9),
+    };
+  } catch (error) {
+    console.error("Failed to get gas params from viem, using fallback.", error);
+    // Provide a more realistic fallback in case the viem estimator fails
+    return {
+      price: "0.1", // 0.1 Gwei
+      maxFeePerGas: "0.1",
+      maxPriorityFeePerGas: "0.05",
+    };
+  }
 }
 
 /**
@@ -244,6 +261,5 @@ export function getGasPriorityLabel(
     medium: "🚶 Medium (balanced)",
     high: "🚀 High (faster, expensive)",
   };
-
   return labels[priority];
 }

@@ -1,9 +1,7 @@
-// src/components/ChatWindow.tsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import CommandButtons from "./CommandButtons";
 import { sdk } from "@farcaster/frame-sdk";
-import { useConnect, useAccount } from "wagmi";
 
 interface Message {
   text: string;
@@ -13,173 +11,113 @@ interface Message {
 
 function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([
-    { text: "Welcome to ForgeBot! Use buttons or type commands." },
+    { text: "Welcome to ForgeBot! Initializing..." },
   ]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [userFid, setUserFid] = useState<number | null>(null);
-  const [username, setUsername] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const { connect, connectors } = useConnect();
-  const { isConnected: isAccountConnected } = useAccount();
-  const lastCommand = useRef<{ fid: string | null; command: string; time: number }>({
-    fid: null,
-    command: "",
-    time: 0,
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const [botState, setBotState] = useState<any>({
+    currentAction: undefined,
+    tempData: {},
+    settings: { slippage: 1.0, gasPriority: 'medium' },
   });
-  const currentAction = useRef<string | null>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const initializeUser = async () => {
       try {
         const context = await sdk.context;
-        console.log("Farcaster context.user:", context.user);
-        const fid = context.user.fid;
-        const displayName = context.user.displayName || "User";
-        const username = context.user.username || "player";
-        setUserFid(fid);
-        setUsername(username);
-        setDisplayName(displayName);
-        sessionStorage.setItem("fid", fid.toString());
-        sessionStorage.setItem("username", username);
-        sessionStorage.setItem("displayName", displayName);
-      } catch {
-        setUsername("player");
-        setDisplayName("User");
-      }
-    };
-    fetchUser();
-  }, []);
-
-  useEffect(() => {
-    const autoConnectInMiniApp = async () => {
-      try {
-        const inMiniApp = await sdk.isInMiniApp();
-        if (inMiniApp && !isAccountConnected) {
-          const farcasterConnector = connectors.find(
-            (c) => c.id === "farcasterFrame"
-          );
-          if (farcasterConnector) {
-            connect({ connector: farcasterConnector });
-          }
+        if (!context.user) {
+            setMessages(prev => [...prev, { text: "Could not find Farcaster user. Please run this in a Farcaster client like Warpcast."}]);
+            return;
         }
-      } catch (error) {
-        console.error("Error during auto-connect:", error);
+        
+        const dName = context.user.displayName || "Farcaster User";
+        const uName = context.user.username || "player";
+        
+        setDisplayName(dName);
+
+        sessionStorage.setItem("fid", context.user.fid.toString());
+        sessionStorage.setItem("username", uName);
+        sessionStorage.setItem("displayName", dName);
+
+        sendCommand("/start", false);
+
+      } catch (err) {
+        console.error("Farcaster context error:", err);
+        setDisplayName("Guest");
+        setMessages(prev => [...prev, { text: "Error initializing Farcaster connection." }]);
       }
     };
-    autoConnectInMiniApp();
-  }, [isAccountConnected, connect, connectors]);
+    
+    initializeUser();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => {
-    const fid = sessionStorage.getItem("fid");
-    if (fid) {
-      setUserFid(parseInt(fid));
-    }
-  }, []);
-
-  const sendCommand = async (command: string, args?: string, isCallback: boolean = false) => {
+  const sendCommand = async (command: string, isCallback: boolean) => {
     const fid = sessionStorage.getItem("fid");
     const username = sessionStorage.getItem("username");
     const displayName = sessionStorage.getItem("displayName");
 
-    // Debounce: Ignore duplicate commands within 1 second
-    if (
-      lastCommand.current.fid === fid &&
-      lastCommand.current.command === command &&
-      Date.now() - lastCommand.current.time < 1000
-    ) {
-      console.log("Ignoring duplicate command:", command);
-      return;
-    }
-    lastCommand.current = { fid, command, time: Date.now() };
-
-    console.log("sendCommand: fid =", fid, "username =", username, "displayName =", displayName, "command =", command, "args =", args, "isCallback =", isCallback, "currentAction =", currentAction.current);
-
     if (!fid) {
-      setMessages([
-        ...messages,
-        { text: "Please authenticate via Farcaster." },
-      ]);
+      setMessages(prev => [...prev, { text: "Farcaster user ID not found. Please reload." }]);
       return;
     }
+    if (isLoading) return;
 
-    setMessages([...messages, { text: args || command, isUser: true }]);
+    setMessages(prev => [...prev, { text: command, isUser: true }]);
     setIsLoading(true);
 
     try {
-      const payload: any = {
+      const apiUrl = process.env.NODE_ENV === "production" 
+        ? "https://forgeback-production.up.railway.app" 
+        : "http://localhost:3000";
+      
+      const endpoint = isCallback ? `${apiUrl}/api/callback` : `${apiUrl}/api/action`;
+
+      const payload = {
         fid,
         username,
         displayName,
+        action: command,
+        callback: command,
+        ...botState
       };
+      
+      const response = await axios.post(endpoint, payload);
+      const responseData = response.data;
 
-      let endpoint = "/api/command";
-      // Check if expecting input for specific actions
-      const lastMessage = messages[messages.length - 1]?.text || "";
-      if (
-        isCallback ||
-        lastMessage.includes("Please send the ERC-20 token address") ||
-        lastMessage.includes("Please enter the amount of ETH") ||
-        lastMessage.includes("Please send your private key")
-      ) {
-        endpoint = "/api/callback";
-        payload.callback = isCallback ? command : null;
-        payload.args = args || (isCallback ? undefined : command);
-      } else {
-        payload.command = command;
-      }
-
-      const apiUrl = process.env.NODE_ENV === "production"
-        ? "https://forgeback-production.up.railway.app"
-        : "http://localhost:3000"; // Adjust port if needed
-      console.log("Sending request to:", `${apiUrl}${endpoint}`, "payload:", payload);
-      const response = await axios.post(`${apiUrl}${endpoint}`, payload, {
-        withCredentials: true,
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-        },
-      });
-      console.log("Response headers:", response.headers, "Set-Cookie:", response.headers["set-cookie"]);
       setMessages((prev) => [
         ...prev,
-        { text: response.data.response, buttons: response.data.buttons },
+        { text: responseData.response, buttons: responseData.buttons },
       ]);
-      // Update currentAction based on response or context
-      if (response.data.response.includes("Please send the ERC-20 token address")) {
-        currentAction.current = "buy_custom_token";
-      } else if (response.data.response.includes("Please enter the amount of ETH")) {
-        currentAction.current = "buy_amount";
-      } else if (response.data.response.includes("Please send your private key")) {
-        currentAction.current = "import_wallet";
+
+      if (responseData.newState) {
+        setBotState(responseData.newState);
       } else {
-        currentAction.current = null;
+        setBotState((prev: any) => ({ ...prev, currentAction: undefined, tempData: {} }));
       }
+
     } catch (error) {
-      console.error("Error processing command:", error);
-      if (axios.isAxiosError(error)) {
-        console.log("Axios error details:", {
-          message: error.message,
-          code: error.code,
-          response: error.response
-            ? {
-                status: error.response.status,
-                data: error.response.data,
-                headers: error.response.headers,
-              }
-            : null,
-        });
-      }
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setMessages((prev) => [
-        ...prev,
-        { text: `Error: ${errorMessage}` },
-      ]);
+    let errorMessage = "An unknown error occurred.";
+
+    if (axios.isAxiosError(error)) {
+        
+        if (error.code === 'ERR_NETWORK' || error.message.includes("ERR_NAME_NOT_RESOLVED")) {
+            errorMessage = "⚠️ Network Error. Please check your internet connection and try again.";
+        } else {
+            errorMessage = error.response?.data?.response || error.message;
+        }
+
+    } else {
+        errorMessage = String(error);
+    }
+      setMessages((prev) => [...prev, { text: `Error: ${errorMessage}` }]);
+      setBotState((prev: any) => ({ ...prev, currentAction: undefined, tempData: {} }));
     } finally {
       setIsLoading(false);
     }
@@ -188,71 +126,62 @@ function ChatWindow() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim()) {
-      sendCommand(input.trim());
+      sendCommand(input.trim(), false);
       setInput("");
     }
   };
 
   const handleButtonClick = (callback: string) => {
-    sendCommand(callback, undefined, true);
+    sendCommand(callback, true);
   };
 
   return (
-    <div className="text-black flex flex-col h-[695px] w-[424px] bg-gray-100 p-4 font-sans text-sm">
+   
+    <div className="flex flex-col h-screen w-screen max-w-full bg-gray-100 p-2 sm:p-4 font-sans text-sm">
+      
       <div className="flex-1 overflow-y-auto mb-4 bg-white rounded-lg p-2 shadow">
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`p-2 m-1 rounded ${msg.isUser ? "bg-blue-100 ml-8" : "bg-gray-200 mr-8"}`}
-          >
-            <pre className="whitespace-pre-wrap">{msg.text}</pre>
-            {i === 0 && userFid && (
-              <p className="text-xs text-gray-500 mt-1">Your Farcaster ID: {userFid}</p>
-            )}
-            {i === 0 && username && (
-              <p className="text-xs text-gray-500">Logged in as: {username}</p>
-            )}
-            {i === 0 && displayName && (
-              <p className="text-xs text-gray-500">Logged in as: {displayName}</p>
-            )}
+          <div key={i} className={`p-2 m-1 rounded w-fit ${msg.isUser ? "bg-blue-100 ml-auto" : "bg-gray-200 mr-auto"}`} style={{ maxWidth: '90%' }}>
+             <pre 
+    className="whitespace-pre-wrap font-sans text-left" 
+    style={{ wordBreak: 'break-all' }} 
+  >
+    {msg.text}
+  </pre>
+            {i === 0 && displayName && (<p className="text-xs text-gray-500 mt-1 text-left">Logged in as: {displayName}</p>)}
             {msg.buttons && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {msg.buttons.map((row, rowIdx) => (
-                  <div key={rowIdx} className="flex gap-2">
-                    {row.map((btn, btnIdx) => (
-                      <button
-                        key={btnIdx}
-                        className="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600"
-                        onClick={() => handleButtonClick(btn.callback)}
-                        disabled={isLoading}
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-                  </div>
+              <div className="mt-2 flex flex-wrap gap-2 justify-start">
+                {msg.buttons.flat().map((btn, btnIdx) => (
+                  <button
+                    key={btnIdx}
+                    className="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600 disabled:bg-blue-300"
+                    onClick={() => handleButtonClick(btn.callback)}
+                    disabled={isLoading}
+                  >
+                    {btn.label}
+                  </button>
                 ))}
               </div>
             )}
           </div>
         ))}
+        {isLoading && <div className="p-2 m-1 rounded bg-gray-200 mr-auto animate-pulse w-fit" style={{ maxWidth: '90%' }}><em>Bot is typing...</em></div>}
         <div ref={messagesEndRef} />
       </div>
-      <CommandButtons onCommand={sendCommand} />
+      
+      <CommandButtons onCommand={(cmd) => sendCommand(cmd, false)} />
+      
       <form onSubmit={handleSubmit} className="flex mt-2">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter command..."
-          className="flex-1 p-2 rounded-l border border-gray-300"
+          placeholder="Enter command or text..."
+          className="flex-1 p-2 rounded-l border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
           disabled={isLoading}
         />
-        <button
-          type="submit"
-          className="bg-blue-500 text-white p-2 rounded-r"
-          disabled={isLoading}
-        >
-          {isLoading ? "Sending..." : "Send"}
+        <button type="submit" className="bg-blue-500 text-white p-2 rounded-r hover:bg-blue-600 disabled:bg-blue-300" disabled={isLoading}>
+          {isLoading ? "..." : "Send"}
         </button>
       </form>
     </div>

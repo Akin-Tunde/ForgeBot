@@ -1,42 +1,35 @@
-// src/commands/settings.ts
+// FILE: src/commands/settings.ts
+
 import { CommandContext } from "../types/commands";
 import { getUserSettings, saveUserSettings } from "../lib/database";
-import { SettingsOption } from "../types/commands";
+
+import { SettingsOption } from "../types/commands"; 
+import { UserSettings } from "../types/config"; // Correct import path
+ // Import UserSettings if not already
 import { isValidGasPriority, isValidSlippage } from "../utils/validators";
 import { getGasPriorityLabel } from "../lib/swap";
+
+// Helper function to ensure we always have a valid settings object
+function getValidSettings(session: CommandContext['session']): UserSettings {
+    // If settings exist and have all required properties, return them.
+    if (session.settings?.userId && session.settings?.slippage && session.settings?.gasPriority) {
+        return session.settings as UserSettings;
+    }
+    // Otherwise, return a complete default object.
+    return {
+        userId: session.userId,
+        slippage: 1.0,
+        gasPriority: 'medium',
+    };
+}
+
 
 export const settingsHandler = {
   command: "settings",
   description: "Change slippage or gas priority",
   handler: async ({ session }: CommandContext) => {
     try {
-      const userId = session.userId;
-      if (!userId) {
-        console.error("[Settings] No userId found");
-        return {
-          response: "❌ Please start the bot first with /start command.",
-        };
-      }
-
-      console.log("[Settings] Loading settings for userId:", userId);
-      let settings = await getUserSettings(userId);
-
-      if (!settings) {
-        console.log("[Settings] No settings found, initializing defaults for userId:", userId);
-        settings = {
-          userId,
-          slippage: 1.0,
-          gasPriority: "medium",
-        };
-        await saveUserSettings(userId, {
-          slippage: settings.slippage,
-          gasPriority: settings.gasPriority,
-        });
-      }
-
-      session.settings = settings;
-      await session.save();
-      console.log("[Settings] Settings loaded and session updated for userId:", userId, settings);
+      const settings = getValidSettings(session);
 
       return {
         response: `⚙️ Your Settings\n\nSlippage Tolerance: ${
@@ -52,8 +45,8 @@ export const settingsHandler = {
         ],
       };
     } catch (error) {
-      console.error("[Settings-error] Error in settings command for userId:", session?.userId, error);
-      return { response: "❌ An error occurred. Please try again later." };
+      console.error("[Settings-error]", error);
+      return { response: "❌ An error occurred." };
     }
   },
 };
@@ -65,62 +58,29 @@ export async function handleSettingsOption(
   response: string;
   buttons?: { label: string; callback: string }[][];
 }> {
-  try {
-    const userId = session.userId;
-    if (!userId) {
-      console.error("[Settings] No userId found in handleSettingsOption");
-      return {
-        response: "❌ Session expired. Please use /start to begin again.",
-      };
-    }
-
-    console.log("[Settings] Handling option:", option, "for userId:", userId);
-    // Fetch fresh settings from Supabase
-    const settings = (await getUserSettings(userId)) || {
-      userId,
-      slippage: 1.0,
-      gasPriority: "medium",
-    };
-    console.log("[Settings] Fetched settings for handleSettingsOption:", settings);
-
+    const settings = getValidSettings(session);
     session.currentAction = `settings_${option}`;
-    session.settings = settings;
-    await session.save();
-    console.log("[Settings] Session updated with currentAction and settings for userId:", userId);
 
     switch (option) {
       case "slippage":
         return {
-          response: `🔄 Slippage Tolerance Setting\n\nSlippage tolerance is the maximum price difference you're willing to accept for a trade.\n\nCurrent setting: ${settings.slippage}%\n\nSelect a new slippage tolerance:`,
+          response: `🔄 Slippage Tolerance Setting...\nCurrent setting: ${settings.slippage}%\n\nSelect a new slippage tolerance:`,
           buttons: [
-            [
-              { label: "0.5%", callback: "slippage_0.5" },
-              { label: "1.0%", callback: "slippage_1.0" },
-              { label: "2.0%", callback: "slippage_2.0" },
-            ],
+            [{ label: "0.5%", callback: "slippage_0.5" }, { label: "1.0%", callback: "slippage_1.0" }, { label: "2.0%", callback: "slippage_2.0" }],
           ],
         };
       case "gasPriority":
         return {
-          response: `⛽ Gas Priority Setting\n\nGas priority determines how quickly your transactions are likely to be processed.\n\nCurrent setting: ${getGasPriorityLabel(
+          response: `⛽ Gas Priority Setting...\nCurrent setting: ${getGasPriorityLabel(
             settings.gasPriority
           )}\n\nSelect a new gas priority:`,
           buttons: [
-            [
-              { label: "Low", callback: "gasPriority_low" },
-              { label: "Medium", callback: "gasPriority_medium" },
-              { label: "High", callback: "gasPriority_high" },
-            ],
+            [{ label: "Low", callback: "gas_low" }, { label: "Medium", callback: "gas_medium" }, { label: "High", callback: "gas_high" }],
           ],
         };
       default:
-        console.error("[Settings] Unknown setting option:", option);
         return { response: "❌ Unknown setting option." };
     }
-  } catch (error) {
-    console.error("[Settings-error] Error handling settings option for userId:", session?.userId, error);
-    return { response: "❌ An error occurred. Please try again." };
-  }
 }
 
 export async function updateSlippage(
@@ -131,55 +91,30 @@ export async function updateSlippage(
   buttons?: { label: string; callback: string }[][];
 }> {
   try {
-    const userId = session.userId;
-    if (!userId) {
-      console.error("[Settings] No userId found in updateSlippage");
-      return { response: "❌ Session expired." };
-    }
-
-    console.log("[Settings] Updating slippage to:", value, "for userId:", userId);
     if (!isValidSlippage(value)) {
-      console.warn("[Settings] Invalid slippage value:", value);
-      return { response: "❌ Invalid slippage value. Please select 0.5%, 1.0%, or 2.0%." };
+      return { response: "❌ Invalid slippage value." };
     }
+    
+    // Start with a guaranteed valid settings object
+    const currentSettings = getValidSettings(session);
 
-    // Fetch latest settings from Supabase to preserve gasPriority
-    const currentSettings = (await getUserSettings(userId)) || {
-      userId,
-      slippage: 1.0,
-      gasPriority: "medium",
-    };
-    console.log("[Settings] Current settings before update:", currentSettings);
-
-    const updatedSettings = {
+    const updatedSettings: UserSettings = {
       ...currentSettings,
       slippage: value,
     };
-    session.settings = updatedSettings;
+    
+    // This will now be type-safe
+    await saveUserSettings(session.userId, updatedSettings);
 
-    await saveUserSettings(userId, {
-      slippage: updatedSettings.slippage,
-      gasPriority: updatedSettings.gasPriority,
-    });
-    await session.save();
-    console.log("[Settings] Slippage updated and saved for userId:", userId, updatedSettings);
+    session.settings = updatedSettings;
+    session.currentAction = undefined;
 
     return {
-      response: `⚙️ Your Settings\n\nSlippage set to ${value}%.\n\nSlippage Tolerance: ${
-        updatedSettings.slippage
-      }%\nGas Priority: ${getGasPriorityLabel(
-        updatedSettings.gasPriority
-      )}\n\nSelect an option to modify:`,
-      buttons: [
-        [
-          { label: "Slippage", callback: "settings_slippage" },
-          { label: "Gas Priority", callback: "settings_gasPriority" },
-        ],
-      ],
+      response: `✅ Slippage Tolerance set to ${value}%.`,
     };
   } catch (error) {
-    console.error("[Settings-error] Error updating slippage for userId:", session?.userId, error);
-    return { response: "❌ An error occurred while updating slippage." };
+    console.error("[Settings-error] Error updating slippage:", error);
+    return { response: "❌ An error occurred." };
   }
 }
 
@@ -191,54 +126,27 @@ export async function updateGasPriority(
   buttons?: { label: string; callback: string }[][];
 }> {
   try {
-    const userId = session.userId;
-    if (!userId) {
-      console.error("[Settings] No userId found in updateGasPriority");
-      return { response: "❌ Session expired." };
-    }
-
-    console.log("[Settings] Updating gas priority to:", priority, "for userId:", userId);
     if (!isValidGasPriority(priority)) {
-      console.warn("[Settings] Invalid gas priority:", priority);
-      return { response: "❌ Invalid gas priority. Please select Low, Medium, or High." };
+      return { response: "❌ Invalid gas priority." };
     }
 
-    // Fetch latest settings from Supabase to preserve slippage
-    const currentSettings = (await getUserSettings(userId)) || {
-      userId,
-      slippage: 1.0,
-      gasPriority: "medium",
-    };
-    console.log("[Settings] Current settings before update:", currentSettings);
+    const currentSettings = getValidSettings(session);
 
-    const updatedSettings = {
+    const updatedSettings: UserSettings = {
       ...currentSettings,
       gasPriority: priority,
     };
-    session.settings = updatedSettings;
 
-    await saveUserSettings(userId, {
-      slippage: updatedSettings.slippage,
-      gasPriority: updatedSettings.gasPriority,
-    });
-    await session.save();
-    console.log("[Settings] Gas priority updated and saved for userId:", userId, updatedSettings);
+    await saveUserSettings(session.userId, updatedSettings);
+    
+    session.settings = updatedSettings;
+    session.currentAction = undefined;
 
     return {
-      response: `⚙️ Your Settings\n\nGas priority set to ${priority}.\n\nSlippage Tolerance: ${
-        updatedSettings.slippage
-      }%\nGas Priority: ${getGasPriorityLabel(
-        updatedSettings.gasPriority
-      )}\n\nSelect an option to modify:`,
-      buttons: [
-        [
-          { label: "Slippage", callback: "settings_slippage" },
-          { label: "Gas Priority", callback: "settings_gasPriority" },
-        ],
-      ],
+      response: `✅ Gas Priority set to ${priority}.`,
     };
   } catch (error) {
-    console.error("[Settings-error] Error updating gas priority for userId:", session?.userId, error);
-    return { response: "❌ An error occurred while updating gas priority." };
+    console.error("[Settings-error] Error updating gas priority:", error);
+    return { response: "❌ An error occurred." };
   }
 }

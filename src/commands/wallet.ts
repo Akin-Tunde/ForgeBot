@@ -42,10 +42,10 @@ export const walletHandler: CommandHandler = {
         buttons: [
           [{ label: "🔑 Export Key", callback: "export_key" }],
           [
-            { label: "💰 Check Balance", callback: "/balance" },
-            { label: "📥 Deposit", callback: "/deposit" },
+            { label: "💰 Check Balance", callback: "check_balance" },
+            { label: "📥 Deposit", callback: "deposit" },
           ],
-          [{ label: "📤 Withdraw", callback: "/withdraw" }],
+          [{ label: "📤 Withdraw", callback: "withdraw" }],
         ],
       };
     } catch (error) {

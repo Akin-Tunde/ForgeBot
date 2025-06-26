@@ -1,16 +1,10 @@
-import { SessionData } from "../types/commands";
-import { WalletData } from "../types/wallet";
-
-interface CommandContext {
-  session: SessionData;
-  wallet?: WalletData;
-  args?: string;
-}
+//src/commands/deposit.ts
+import { CommandContext } from "../types/commands";
 
 export const depositHandler = {
   command: "deposit",
   description: "Display your wallet address for deposits",
-  handler: async ({ session, wallet }: CommandContext) => {
+  handler: async ({ session, wallet }: CommandContext) => { 
     try {
       const userId = session.userId;
       if (!userId) {

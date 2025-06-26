@@ -388,3 +388,48 @@ export async function getUniqueTokensByUserId(userId: string): Promise<string[]>
 export function closeDatabase(): void {
   console.log("Supabase connection managed automatically.");
 }
+
+// FILE: src/lib/database.ts
+
+// ... (keep existing functions like createUser, getWalletByUserId, etc.)
+
+// New function to get user state
+export async function getUserState(fid: string): Promise<{ currentAction: string | null; tempData: Record<string, any> | null }> {
+  const { data, error } = await supabase
+    .from(DB_TABLES.USERS)
+    .select('current_action, temp_data')
+    .eq('fid', fid)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error("Error getting user state:", error.message);
+    return { currentAction: null, tempData: null };
+  }
+  
+  return {
+    currentAction: data?.current_action || null,
+    tempData: data?.temp_data || {}
+  };
+}
+
+// New function to update user state
+export async function setUserState(fid: string, state: { currentAction?: string | null; tempData?: Record<string, any> | null }): Promise<void> {
+  const updatePayload: { [key: string]: any } = {};
+  if (state.currentAction !== undefined) {
+      updatePayload.current_action = state.currentAction;
+  }
+  if (state.tempData !== undefined) {
+      updatePayload.temp_data = state.tempData;
+  }
+
+  if (Object.keys(updatePayload).length === 0) return; // Nothing to update
+
+  const { error } = await supabase
+    .from(DB_TABLES.USERS)
+    .update(updatePayload)
+    .eq('fid', fid);
+
+  if (error) {
+    console.error("Error setting user state:", error.message);
+  }
+}

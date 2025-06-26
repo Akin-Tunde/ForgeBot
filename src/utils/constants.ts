@@ -61,3 +61,6 @@ export const DB_TABLES = {
   SETTINGS: "settings",
   TRANSACTIONS: "transactions",
 };
+
+// src/utils/constants.ts
+export const ALCHEMY_URL = process.env.ALCHEMY_URL || "";

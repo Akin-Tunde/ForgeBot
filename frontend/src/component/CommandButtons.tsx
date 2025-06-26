@@ -1,3 +1,4 @@
+
 interface CommandButtonsProps {
   onCommand: (command: string) => void;
 }

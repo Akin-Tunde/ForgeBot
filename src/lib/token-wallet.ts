@@ -1,3 +1,4 @@
+//src/lib/token-wallet.ts
 import {
   createWalletClient,
   http,
@@ -150,7 +151,7 @@ export function getPrivateKey(wallet: WalletData): string {
     if (!isValidPrivateKey(privateKey)) {
       throw new Error("Decrypted private key is invalid");
     }
-    return `0x${privateKey}`;
+    return `${privateKey}`;
   } catch (error) {
     console.error("Error decrypting private key:", error);
     throw new Error("Failed to retrieve private key");
@@ -172,9 +173,16 @@ export async function getEthBalance(address: Address): Promise<string> {
     return "0";
   }
 }
+// FILE: src/lib/token-wallet.ts
+// (Showing only the function that needs to be fixed)
+
+// ... other functions like createClient, generateWallet, importWallet, etc. ...
 
 /**
  * Execute a contract method using viem's writeContract
+ *
+ * NOTE: This function is not currently used by buy/sell but could be in the future.
+ * It also needs to be updated to return the correct receipt type.
  */
 export async function executeContractMethod({
   walletData,
@@ -191,11 +199,9 @@ export async function executeContractMethod({
 }): Promise<TransactionReceipt> {
   try {
     const account = getAccount(walletData);
+    const publicClient = createPublicClientForBase();
+    const walletClient = createClient(account);
 
-    const publicClient = createPublicClientForBase(); // Read client
-    const walletClient = createClient(account); // Write client
-
-    // Simulate to get the transaction request
     const { request } = await publicClient.simulateContract({
       address: contractAddress,
       abi,
@@ -204,17 +210,16 @@ export async function executeContractMethod({
       account,
     });
 
-    // Write transaction
     const hash = await walletClient.writeContract(request);
-
-    // Wait for receipt
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
+    // CORRECTED: Ensure it returns the full TransactionReceipt object
     return {
       transactionHash: receipt.transactionHash,
       blockNumber: receipt.blockNumber,
       status: receipt.status === "success" ? "success" : "failure",
       gasUsed: receipt.gasUsed.toString(),
+      effectiveGasPrice: receipt.effectiveGasPrice.toString(), // <-- FIX APPLIED HERE
     };
   } catch (error) {
     console.error("Contract method execution failed:", error);
@@ -224,6 +229,7 @@ export async function executeContractMethod({
 
 /**
  * Execute a transaction
+ * THIS IS THE FUNCTION CAUSING THE ERROR
  */
 export async function executeTransaction(
   walletData: WalletData,
@@ -234,11 +240,13 @@ export async function executeTransaction(
     const client = createClient(account);
 
     // Prepare transaction parameters
+    // The buy/sell commands use OpenOcean, which provides legacy gasPrice.
+    // viem will automatically handle converting this to EIP-1559 format if the network supports it.
     const txParams: any = {
       to: params.to,
       data: params.data,
       value: BigInt(params.value || "0"),
-      gasPrice: BigInt(params.gasPrice),
+      gasPrice: BigInt(params.gasPrice), // OpenOcean addon provides this
     };
 
     // Send transaction
@@ -248,11 +256,13 @@ export async function executeTransaction(
     const publicClient = createPublicClientForBase();
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
+    // CORRECTED: Return the full TransactionReceipt object
     return {
       transactionHash: receipt.transactionHash,
       blockNumber: receipt.blockNumber,
       status: receipt.status === "success" ? "success" : "failure",
       gasUsed: receipt.gasUsed.toString(),
+      effectiveGasPrice: receipt.effectiveGasPrice.toString(), // <-- FIX APPLIED HERE
     };
   } catch (error) {
     console.error("Transaction execution failed:", error);
@@ -260,52 +270,54 @@ export async function executeTransaction(
   }
 }
 
+
 /**
  * Withdraw ETH to another address
+ * (This function is already correct from the previous fix)
  */
 export async function withdrawEth(
   walletData: WalletData,
   params: WithdrawalParams
 ): Promise<TransactionReceipt> {
-  try {
-    const account = getAccount(walletData);
+    // ... function code is correct from previous step ...
+    try {
+        const account = getAccount(walletData);
+        const client = createClient(account);
 
-    const client = createClient(account);
+        const txParams: any = {
+          to: params.to,
+          value: BigInt(params.amount),
+        };
 
-    // Prepare transaction parameters
-    const txParams: any = {
-      to: params.to,
-      value: BigInt(params.amount),
-      gasLimit: BigInt(21000), // Standard gas limit for ETH transfer
-    };
+        if (params.maxFeePerGas && params.maxPriorityFeePerGas) {
+          txParams.maxFeePerGas = BigInt(params.maxFeePerGas);
+          txParams.maxPriorityFeePerGas = BigInt(params.maxPriorityFeePerGas);
+        } else if (params.gasPrice) {
+          txParams.gasPrice = BigInt(params.gasPrice);
+        }
 
-    // Add gas price parameters
-    if (params.maxFeePerGas && params.maxPriorityFeePerGas) {
-      txParams.maxFeePerGas = BigInt(params.maxFeePerGas);
-      txParams.maxPriorityFeePerGas = BigInt(params.maxPriorityFeePerGas);
-    } else if (params.gasPrice) {
-      txParams.gasPrice = BigInt(params.gasPrice);
-    }
+        const hash = await client.sendTransaction(txParams);
 
-    // Send transaction
-    const hash = await client.sendTransaction(txParams);
+        const publicClient = createPublicClientForBase();
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-    // Wait for transaction receipt
-    const publicClient = createPublicClientForBase();
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-    return {
-      transactionHash: receipt.transactionHash,
-      blockNumber: receipt.blockNumber,
-      status: receipt.status === "success" ? "success" : "failure",
-      gasUsed: receipt.gasUsed.toString(),
-    };
-  } catch (error) {
-    console.error("Withdrawal failed:", error);
-    throw error;
-  }
+        return {
+          transactionHash: receipt.transactionHash,
+          blockNumber: receipt.blockNumber,
+          status: receipt.status === "success" ? "success" : "failure",
+          gasUsed: receipt.gasUsed.toString(),
+          effectiveGasPrice: receipt.effectiveGasPrice.toString(),
+        };
+      } catch (error) {
+        console.error("Withdrawal failed:", error);
+        throw error;
+      }
 }
 
+
+// ... rest of the file ...
+
+// ... other functions in the file ...
 /**
  * Estimate gas for ETH withdrawal
  */

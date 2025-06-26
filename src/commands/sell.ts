@@ -13,10 +13,19 @@ import {
   formatTransactionDetails,
 } from "../utils/formatters";
 import { isValidAddress, isValidAmount } from "../utils/validators";
-import { getTokenBalance } from "../lib/history";
+
 import { NATIVE_TOKEN_ADDRESS, MAX_UINT256 } from "../utils/constants";
 import { Address, parseUnits, formatUnits } from "viem";
 import { erc20Abi } from "../utils/abis";
+
+// FILE: src/commands/sell.ts
+
+// ... imports ...
+
+// FILE: src/commands/sell.ts
+
+import { getTokenBalance as getDirectTokenBalance } from "../lib/token-wallet";
+
 
 export const sellHandler = {
   command: "sell",
@@ -25,40 +34,49 @@ export const sellHandler = {
     try {
       const userId = session.userId;
       if (!userId) {
-        return {
-          response: "❌ Please start the bot first with /start command.",
-        };
+        return { response: "❌ Please start the bot first with /start command." };
       }
-
       if (!wallet) {
-        return {
-          response:
-            "❌ You don't have a wallet yet.\n\nUse /create to create a new wallet or /import to import an existing one.",
-        };
+        return { response: "❌ You don't have a wallet yet.\n\nUse /create to create a new wallet or /import to import an existing one." };
       }
 
-      const tokenData = await getTokenBalance(wallet.address);
-      const interactedTokensRaw = await getUniqueTokensByUserId(userId);
-const interactedTokens = interactedTokensRaw.map((t: string) =>
-  t.toLowerCase()
-);
-
-      if (tokenData && Array.isArray(tokenData.tokens)) {
-        tokenData.tokens = tokenData.tokens.filter((token) => {
-          const contract = token.contract?.toLowerCase();
-          return (
-            contract &&
-            token.type === "ERC20" &&
-            BigInt(token.balance) > 0n &&
-            interactedTokens.includes(contract)
-          );
-        });
+      // --- START OF NEW LOGIC ---
+      // 1. Get the list of tokens the user has interacted with from OUR database.
+      const interactedTokenAddresses = await getUniqueTokensByUserId(userId);
+      if (interactedTokenAddresses.length === 0) {
+        return { response: "❌ You have no transaction history. Use /buy to purchase some tokens first." };
       }
 
-      if (!tokenData || !tokenData.tokens || tokenData.tokens.length === 0) {
+      console.log(`[Sell] Found interacted tokens from DB:`, interactedTokenAddresses);
+
+      // 2. For each token, get its info and REAL-TIME balance directly from the blockchain.
+      const sellableTokensPromises = interactedTokenAddresses.map(async (tokenAddress) => {
+        const balance = await getDirectTokenBalance(tokenAddress as Address, wallet.address as Address);
+        
+        // Only consider tokens with a balance > 0
+        if (BigInt(balance) > 0n) {
+          const tokenInfo = await getTokenInfo(tokenAddress as Address);
+          if (tokenInfo) {
+            return {
+              ...tokenInfo,
+              balance: balance,
+              contract: tokenAddress, // Ensure contract property is present
+            };
+          }
+        }
+        return null;
+      });
+
+      const resolvedTokens = await Promise.all(sellableTokensPromises);
+      const sellableTokens = resolvedTokens.filter(token => token !== null);
+      
+      console.log(`[Sell] Found sellable tokens with balance:`, sellableTokens);
+      // --- END OF NEW LOGIC ---
+
+      if (sellableTokens.length === 0) {
         return {
           response:
-            "❌ You don't have any tokens to sell.\n\nUse /buy to buy some tokens first.",
+            "❌ You don't have any sellable ERC-20 tokens in your wallet with a balance.\n\nIf you just bought a token, please wait a moment for the blockchain to update and try again.",
         };
       }
 
@@ -68,32 +86,31 @@ const interactedTokens = interactedTokensRaw.map((t: string) =>
         toSymbol: "ETH",
         toDecimals: 18,
         walletAddress: wallet.address,
-        tokens: tokenData.tokens,
+        tokens: sellableTokens, // Pass the correctly filtered list to the session
       };
 
       const buttons = [];
-      for (let i = 0; i < Math.min(tokenData.tokens.length, 6); i += 2) {
+      for (let i = 0; i < Math.min(sellableTokens.length, 6); i += 2) {
         const row = [];
-        if (tokenData.tokens[i] && BigInt(tokenData.tokens[i].balance) > 0) {
+        if (sellableTokens[i]) {
           row.push({
-            label: tokenData.tokens[i].symbol,
-            callback: `sell_token_${tokenData.tokens[i].contract}`,
+            label: sellableTokens[i].symbol,
+            callback: `sell_token_${sellableTokens[i].contract}`,
           });
         }
-        if (
-          tokenData.tokens[i + 1] &&
-          BigInt(tokenData.tokens[i + 1].balance) > 0
-        ) {
+        if (sellableTokens[i + 1]) {
           row.push({
-            label: tokenData.tokens[i + 1].symbol,
-            callback: `sell_token_${tokenData.tokens[i + 1].contract}`,
+            label: sellableTokens[i + 1].symbol,
+            callback: `sell_token_${sellableTokens[i + 1].contract}`,
           });
         }
         if (row.length > 0) buttons.push(row);
       }
+      
+      buttons.push([{ label: "Sell Custom Token", callback: "sell_token_custom"}]);
 
       return {
-        response: "💱 Sell Tokens for ETH\n\nSelect a token to sell:",
+        response: "💱 Sell Tokens for ETH\n\nSelect a token from your wallet to sell:",
         buttons,
       };
     } catch (error) {
@@ -102,6 +119,9 @@ const interactedTokens = interactedTokensRaw.map((t: string) =>
     }
   },
 };
+
+// ... The rest of the `sell.ts` file remains unchanged ...
+// ... The rest of the file (handleSellTokenSelection, etc.) remains unchanged.
 
 export async function handleSellTokenSelection(
   context: CommandContext
