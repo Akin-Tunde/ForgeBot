@@ -5,7 +5,6 @@ A secure and user-friendly farcaster miniapp bot for trading ERC-20 tokens on Ba
 ![farcaster miniapp Trading Bot Screenshot](public/farcaster miniapp-test-combined.png)
 
 ## Features
-
 - 🔐 **Secure Wallet Management**:
 
   - Create new wallets directly from farcaster miniapp
